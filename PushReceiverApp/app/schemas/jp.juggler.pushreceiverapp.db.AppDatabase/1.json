@@ -1,0 +1,149 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "577e0b1621665898b35e1a40c4c8ef0f",
+    "entities": [
+      {
+        "tableName": "clients",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `client_name` TEXT NOT NULL, `client_json` TEXT NOT NULL, `auth_version` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "dbId",
+            "columnName": "db_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apiHost",
+            "columnName": "api_host",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientName",
+            "columnName": "client_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "clientJson",
+            "columnName": "client_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authVersion",
+            "columnName": "auth_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "db_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "saved_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `ap_domain` TEXT NOT NULL, `user_name` TEXT NOT NULL, `token_json` TEXT NOT NULL, `account_json` TEXT NOT NULL, `server_json` TEXT NOT NULL, `push_key_private` BLOB, `push_key_public` BLOB, `push_auth_secret` BLOB, `push_server_key` BLOB)",
+        "fields": [
+          {
+            "fieldPath": "dbId",
+            "columnName": "db_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apiHost",
+            "columnName": "api_host",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apDomain",
+            "columnName": "ap_domain",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userName",
+            "columnName": "user_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenJson",
+            "columnName": "token_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountJson",
+            "columnName": "account_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverJson",
+            "columnName": "server_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pushKeyPrivate",
+            "columnName": "push_key_private",
+            "affinity": "BLOB",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pushKeyPublic",
+            "columnName": "push_key_public",
+            "affinity": "BLOB",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pushAuthSecret",
+            "columnName": "push_auth_secret",
+            "affinity": "BLOB",
+            "notNull": false
+          },
+          {
+            "fieldPath": "pushServerKey",
+            "columnName": "push_server_key",
+            "affinity": "BLOB",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "db_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_saved_account_user_name_ap_domain",
+            "unique": true,
+            "columnNames": [
+              "user_name",
+              "ap_domain"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_saved_account_user_name_ap_domain` ON `${TABLE_NAME}` (`user_name`, `ap_domain`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '577e0b1621665898b35e1a40c4c8ef0f')"
+    ]
+  }
+}

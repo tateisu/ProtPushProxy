@@ -1,3 +1,14 @@
 <resources>
     <string name="app_name">PushReceiverApp</string>
+    <string name="alert">Alert</string>
+    <string name="alert_notification_desc">shows various alerts</string>
+    <string name="permission_notifications_rational">this app requests permission to show notifications about alerts, push message, etc,.</string>
+    <string name="permission_notifications_denied">missing permission to show notifications.</string>
+    <string name="setting">setting</string>
+    <string name="alert_test">Alert test</string>
+    <string name="server_host">Server\'s host name</string>
+    <string name="hostname_empty">hostname is empty.</string>
+    <string name="add_account">Add account</string>
+    <string name="push_distributor">Push distributor</string>
+    <string name="none">none</string>
 </resources>

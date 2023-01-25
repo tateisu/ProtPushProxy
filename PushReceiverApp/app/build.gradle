@@ -1,10 +1,14 @@
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "org.jetbrains.kotlin.kapt"
 }
 
 android {
-    namespace 'jp.juggler.pushreceiverapp'
+    namespace "jp.juggler.pushreceiverapp"
     compileSdk 33
 
     defaultConfig {
@@ -15,30 +19,81 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
     }
+    // Specifies one flavor dimension.
+    flavorDimensions "fcm"
+    productFlavors {
+        nofcm {
+            dimension "fcm"
+            // applicationIdSuffix ".demo"
+            versionNameSuffix "-nofcm"
+        }
+        fcm {
+            dimension "fcm"
+            // applicationIdSuffix ".full"
+            versionNameSuffix "-fcm"
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = "1.8"
+    }
+    viewBinding {
+        enabled = true
     }
 }
 
 dependencies {
+    implementation project(":base")
 
-    implementation 'androidx.core:core-ktx:1.7.0'
-    implementation 'androidx.appcompat:appcompat:1.6.0'
-    implementation 'com.google.android.material:material:1.7.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    testImplementation "junit:junit:4.13.2"
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
+    androidTestImplementation "androidx.test.espresso:espresso-core:3.5.1"
+
+    fcmApi "com.google.firebase:firebase-messaging:23.1.1"
+    fcmApi "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:$kotlinxCoroutinesVersion"
+
+    api "com.github.penfeizhou.android.animation:awebp:2.24.0"
+    api "com.github.penfeizhou.android.animation:glide-plugin:2.24.0"
+
+    kapt "com.github.bumptech.glide:compiler:$glideVersion"
+    kapt "androidx.room:room-compiler:$roomVersion"
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:$desugarLibVersion"
+}
+
+def isFcm() {
+    Gradle gradle = getGradle()
+    String tskReqStr = gradle.getStartParameter().getTaskRequests().toString()
+
+    Matcher matcher
+    matcher = Pattern.compile("(?:assemble|generate)fcm\\w+", Pattern.CASE_INSENSITIVE).matcher(tskReqStr)
+    if (!matcher.find()) {
+        println "missing fcm in $tskReqStr"
+        return false
+    } else {
+        return true
+    }
+}
+
+if (isFcm()) {
+    println("isFcm=true")
+    apply plugin: 'com.google.gms.google-services'
 }

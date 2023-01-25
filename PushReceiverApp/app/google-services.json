@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "17325787336",
+    "project_id": "protpushproxy",
+    "storage_bucket": "protpushproxy.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:17325787336:android:c4e85b33d8830cc8123dfd",
+        "android_client_info": {
+          "package_name": "jp.juggler.pushreceiverapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "17325787336-j2qpmfgpsdb9i1j878uhocigvha76dka.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "jp.juggler.pushreceiverapp",
+            "certificate_hash": "5d2fd7b774846fc6b7c413c6f632020dc80063ac"
+          }
+        },
+        {
+          "client_id": "17325787336-60rsdcdok5cce53jlahj2eurhji899ss.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRrYKhr_KI9YtKDS296AteYyHfue571AA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "17325787336-60rsdcdok5cce53jlahj2eurhji899ss.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
