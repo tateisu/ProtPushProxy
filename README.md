@@ -1,56 +1,27 @@
 # ProtPushProxy
 
-SNSサーバからWebPushを受け取りアプリに中継するプロトタイプ。
+SNSサーバ→アプリサーバ→プッシュサーバ→テストアプリの流れでプッシュメッセージの購読と受信を行うプロトタイプ。
 
-- OpenAPIでAPIを定義してktorで実装
-- UnifiedPush対応
-- 1アクセストークンで複数デバイスに中継する
+## 構成
 
+### PushReceiverApp
+Android用のテストアプリ
+- マストドンにOAuthログインする。
+- UnifiedPushのディストリビューターを選ぶ。
+- UPの中継URLをアプリサーバに登録する。
 
-# 構成
+### AppServer
+アプリサーバ。
+- アプリから中継URLを受け取ってDBに覚える。
+- SNSサーバからWebPushメッセージを受け取り中継URL(プッシュサーバ)に投げる。
 
-メッセージ配送:
-```
-SNSサーバ
-↓
-アプリサーバ
-↓
-UPディストリビュータのサーバ
-↓
-(APP) UPディストリビュータのレシーバ
-↓
-(APP) UPのMessagingReceiver
-↓
-アプリ固有の処理
-```
+### FcmV1Sender
+- FCMの FCM V1 APIに適当なメッセージを投げるテスト。
+- まだアプリサーバに統合されてない。
 
-登録：
-```
-アプリ
-↓
-try{
-	UnifiedPush.getDistributors(context)
-		.find{...}
-		?.let{ 	UnifiedPush.saveDistributor(context, selectedDistoributer) }
-		UnifiedPush.registerApp(context,instance, features, messageForDistributor)
-}catch(…){
-	…
-}
-↓(非同期)
-MessagingReceiver.onNewEndpoint, onRegistrationFailed が呼ばれる
-↓
-アプリはendpointをアプリサーバに送る
-```
+## 仕様
 
-登録解除：
-```
-try{
-	UnifiedPush.unregisterApp(context,instance)
-}catch(…){
-	…
-}
-↓(非同期)
-MessagingReceiver.onUnregistered が呼ばれる
-↓
-アプリは登録解除をアプリサーバに伝える
-```
+SNSサーバに登録するURLでデバイストークンやインストールIDや中継URLを漏らさない。URL中のパラメータは次の２つ。
+- a: 中継に必要なパラメータのSHA256ダイジェスト。DB側で照合して情報を補うと中継できる。同一鯖複数アカウントでも同じにはならない。
+- dh インストール時に生成したUUIDとアカウントのacctのハッシュ。アプリ側で既存の購読のエンドポイントURLを照合してこのパラメータが異なるなら、それは他の端末で作成したものなので購読を上書きしてはいけない。アプリサーバ側ではこのパラメータは見ていない。
+

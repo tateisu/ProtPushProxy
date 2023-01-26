@@ -239,8 +239,6 @@ fun Application.routeRegister() {
 
                 val body = call.receive<ByteArray>()
 
-
-
                 val upUrl = endpoint.upUrl
                 val fcmToken = endpoint.fcmToken
                 when {
