@@ -1,28 +1,33 @@
 package db
 
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
-import java.io.File
+import javax.sql.DataSource
 
 object AppDatabase {
 
-    var dbUrl =  "jdbc:h2:file:/database"
+    var dbUrl = "jdbc:h2:file:/database"
     var dbDriver = "org.h2.Driver"
     var dbUser = ""
     var dbPassword = ""
 
+    private val dataSource: DataSource by lazy {
+        val config = HikariConfig()
+        config.driverClassName = dbDriver
+        config.jdbcUrl = dbUrl
+        config.username = dbUser
+        config.password = dbPassword
+        HikariDataSource(config)
+    }
+
     fun initializeSchema() {
-        val database = Database.connect(
-            url= dbUrl,
-            driver = dbDriver,
-            user = dbUser,
-            password = dbPassword,
-        )
-        transaction(database) {
-            SchemaUtils.create(Subscription.Meta)
+        transaction(Database.connect(dataSource)) {
+            SchemaUtils.create(Endpoint.Meta)
         }
     }
 

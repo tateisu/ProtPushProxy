@@ -1,96 +1,76 @@
 package jp.juggler.pushreceiverapp.notification
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.drawable.Drawable
+import android.graphics.drawable.Icon
+import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.CustomTarget
-import com.bumptech.glide.request.transition.Transition
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.net.toUri
+import jp.juggler.pushreceiverapp.ActMessage.Companion.intentActMessage
 import jp.juggler.pushreceiverapp.R
+import jp.juggler.pushreceiverapp.db.PushMessage
+import jp.juggler.pushreceiverapp.notification.NotificationDeleteReceiver.Companion.intentNotificationDelete
 import jp.juggler.util.AdbLog
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resumeWithException
+import jp.juggler.util.loadIcon
+import jp.juggler.util.notEmpty
 
 /**
  * SNSからの通知
  */
-private const val piTapRequestCode = 1
-private const val notificationId = 2
-
-@OptIn(ExperimentalCoroutinesApi::class)
 suspend fun Context.showSnsNotification(
-    message: String,
-    title: String,
-    imageUrl: String?,
-    priority: Int = NotificationCompat.PRIORITY_DEFAULT,
+    pm: PushMessage,
 ) {
-    val bitmap = try {
-        suspendCancellableCoroutine<Bitmap> { cont ->
-            @Suppress("ThrowableNotThrown")
-            val target = object : CustomTarget<Bitmap>() {
-                override fun onLoadFailed(errorDrawable: Drawable?) {
-                    cont.resumeWithException(IllegalStateException("load failed."))
-                }
-
-                override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                    cont.resume(resource) {
-                        resource.recycle()
-                    }
-                }
-
-                override fun onLoadCleared(placeholder: Drawable?) {
-                    cont.resumeWithException(IllegalStateException("load cleared."))
-                }
-            }
-            Glide.with(this)
-                .asBitmap()
-                .load(imageUrl)
-                .into(target)
-            cont.invokeOnCancellation {
-                Glide.with(this).clear(target)
-            }
+    if (Build.VERSION.SDK_INT >= 33) {
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            AdbLog.w("missing POST_NOTIFICATIONS.")
+            return
         }
-    }catch(ex:Throwable){
-        AdbLog.w(ex,"url=$imageUrl")
-        null
     }
 
-    if (ActivityCompat.checkSelfPermission(
-            this,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
-        AdbLog.w("missing POST_NOTIFICATIONS. alert=$message")
-        bitmap?.recycle()
-        return
+    val nc = NotificationChannels.PushMessage
+
+    suspend fun PushMessage.loadSmallIcon(context:Context):IconCompat {
+        iconSmall?.notEmpty()
+            ?.let { loadIcon(pm.iconSmall) }
+            ?.let { return IconCompat.createWithBitmap(it) }
+        val iconId=notificationTypeToIconId(messageJson.string("notification_type"))
+        return IconCompat.createWithResource(context,iconId)
     }
 
+    val iconSmall = pm.loadSmallIcon(this)
+    val iconBitmapLarge = loadIcon(pm.iconLarge)
     val now = System.currentTimeMillis()
+    val tag = "${now}/${pm.messageDbId}"
 
-    val tag = "${System.currentTimeMillis()}/${message.hashCode()}"
+    // Create an explicit intent for an Activity in your app
+    val iTap = intentActMessage(pm.messageDbId)
+    val piTap = PendingIntent.getActivity(this, nc.pircTap, iTap, PendingIntent.FLAG_IMMUTABLE)
 
-//    // Create an explicit intent for an Activity in your app
-//    val iTap = intentActAlert(tag = tag, message = message, title = title)
-//
-//    val piTap =
-//        PendingIntent.getActivity(this, piTapRequestCode, iTap, PendingIntent.FLAG_IMMUTABLE)
+    val uri = "${nc.uriPrefixDelete}/${pm.messageDbId}".toUri()
+    val iDelete = intentNotificationDelete(uri)
+    val piDelete =
+        PendingIntent.getBroadcast(this, nc.pircDelete, iDelete, PendingIntent.FLAG_IMMUTABLE)
 
-    val builder = NotificationCompat.Builder(this, NotificationChannels.Alert.id).apply{
-        setSmallIcon(R.drawable.nc_error)
-        setContentTitle(title)
-        setContentText(message)
-        setPriority(priority)
+    val builder = NotificationCompat.Builder(this, NotificationChannels.PushMessage.id).apply {
+        priority = nc.priority
+        setSmallIcon(iconSmall)
+        iconBitmapLarge?.let { setLargeIcon(it) }
+        setContentTitle(pm.loginAcct)
+        setContentText(pm.messageShort)
         setWhen(now)
-//        .setContentIntent(piTap)
+        setContentIntent(piTap)
+        setDeleteIntent(piDelete)
         setAutoCancel(true)
-        bitmap?.let{ setLargeIcon(it)}
     }
 
-    NotificationManagerCompat.from(this).notify(tag, notificationId, builder.build())
+    NotificationManagerCompat.from(this).notify(tag, nc.notificationId, builder.build())
 }

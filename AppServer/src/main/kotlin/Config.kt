@@ -3,16 +3,15 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 
 class Config {
-    companion object {
-
-    }
 
     var verbose = false
+
+    var pidFile = "./pid"
 
     var listenHost = "0.0.0.0"
     var listenPort = 8080
 
-    var dbUrl = "jdbc:h2:file:/database"
+    var dbUrl = "jdbc:h2:file:./database"
     var dbDriver = "org.h2.Driver"
     var dbUser = ""
     var dbPassword = ""
@@ -21,13 +20,14 @@ class Config {
         when (k) {
             "verbose" -> verbose = v.isTruth()
             "host" -> listenHost = v
-            "post" -> listenPort = v.toIntOrNull()?.takeIf { it in 1 until 65536 }
+            "port" -> listenPort = v.toIntOrNull()?.takeIf { it in 1 until 65536 }
                 ?: error("incorrect listenPort [$v]")
 
             "dbUrl" -> dbUrl = v
             "dbDriver" -> dbDriver = v
             "dbUser" -> dbUser = v
             "dbPassword" -> dbPassword = v
+            else -> error("unknown key: $k")
         }
     }
 

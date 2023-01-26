@@ -8,10 +8,11 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.BaseAdapter
 import androidx.appcompat.app.AppCompatActivity
-import androidx.lifecycle.lifecycleScope
+import jp.juggler.pushreceiverapp.ActMessageList.Companion.intentActMessageList
 import jp.juggler.pushreceiverapp.alert.dialogOrAlert
 import jp.juggler.pushreceiverapp.alert.launchAndShowError
 import jp.juggler.pushreceiverapp.alert.showAlertNotification
+import jp.juggler.pushreceiverapp.api.AppServerApi
 import jp.juggler.pushreceiverapp.api.AuthApi
 import jp.juggler.pushreceiverapp.api.PushSubscriptionApi
 import jp.juggler.pushreceiverapp.auth.AuthRepo
@@ -22,12 +23,11 @@ import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.actionsDialog
 import jp.juggler.pushreceiverapp.dialog.dialogServerHost
 import jp.juggler.pushreceiverapp.dialog.runInProgress
-import jp.juggler.pushreceiverapp.fcm.FcmHandler
 import jp.juggler.pushreceiverapp.permission.permissionSpecNotification
 import jp.juggler.pushreceiverapp.permission.requester
 import jp.juggler.pushreceiverapp.push.PushRepo
+import jp.juggler.pushreceiverapp.push.fcmHandler
 import jp.juggler.util.*
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.unifiedpush.android.connector.UnifiedPush
@@ -48,10 +48,13 @@ class ActMain : AppCompatActivity() {
             accountAccess = appDatabase.accountAccess(),
         )
     }
-    val pushRepo by lazy {
+    private val pushRepo by lazy {
+        val okHttp = OkHttpClient()
         PushRepo(
-            api = PushSubscriptionApi(OkHttpClient()),
-            accountAccess = appDatabase.accountAccess()
+            accountAccess = appDatabase.accountAccess(),
+            pushMessageAccess = appDatabase.pushMessageAccess(),
+            pushApi = PushSubscriptionApi(okHttp),
+            appServerApi = AppServerApi(okHttp),
         )
     }
 
@@ -75,14 +78,15 @@ class ActMain : AppCompatActivity() {
         views.btnPushDistributor.setOnClickListener {
             pushDistributor()
         }
+        views.btnMessageList.setOnClickListener {
+            startActivity(intentActMessageList())
+        }
 
         views.lvAccounts.adapter = accountsAdapter
         views.lvAccounts.onItemClickListener = accountsAdapter
 
-        lifecycleScope.launch {
-            FcmHandler.fcmToken.collect {
-                showStatus()
-            }
+        launchAndShowError {
+            fcmHandler.fcmToken.collect { showStatus() }
         }
 
         if (savedInstanceState == null) {
@@ -99,7 +103,7 @@ class ActMain : AppCompatActivity() {
 
     @SuppressLint("SetTextI18n")
     private fun showStatus() {
-        val fcmToken = FcmHandler.fcmToken.value
+        val fcmToken = fcmHandler.fcmToken.value
         AdbLog.i("fcmToken=$fcmToken")
         views.tvStatus.text = """
             fcmToken=${fcmToken}
@@ -145,7 +149,10 @@ class ActMain : AppCompatActivity() {
 //                    // アプリサーバのエンドポイントがまだないので何もできない
 //                }
 //            }
-            for (packageName in UnifiedPush.getDistributors(context)) {
+            for (packageName in UnifiedPush.getDistributors(
+                context,
+                features = ArrayList(listOf(UnifiedPush.FEATURE_BYTES_MESSAGE))
+            )) {
                 val lastSelected = false // XXX
                 action("$packageName ${if (lastSelected) " *" else ""}") {
                     runInProgress(cancellable = false) {
@@ -158,7 +165,7 @@ class ActMain : AppCompatActivity() {
             action(getString(R.string.none)) {
                 runInProgress(cancellable = false) {
                     withContext(AppDispatchers.DEFAULT) {
-                        pushRepo.switchDistributor(context, null)
+                        pushRepo.removePush(context)
                     }
                 }
             }

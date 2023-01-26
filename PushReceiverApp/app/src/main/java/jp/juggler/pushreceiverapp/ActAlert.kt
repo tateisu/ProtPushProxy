@@ -42,6 +42,6 @@ class ActAlert : AppCompatActivity() {
             ?.let { title = it }
 
         intent?.getStringExtra(EXTRA_MESSAGE).notEmpty()
-            ?.let { views.tvMessage.setText(it) }
+            ?.let { views.etMessage.setText(it) }
     }
 }

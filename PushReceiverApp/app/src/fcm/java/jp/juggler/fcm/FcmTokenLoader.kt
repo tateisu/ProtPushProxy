@@ -9,4 +9,8 @@ class FcmTokenLoader {
     // implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:$kotlinx_coroutines_version"
     suspend fun getToken(): String? =
         FirebaseMessaging.getInstance().token.await()
+
+    suspend fun deleteToken(){
+        FirebaseMessaging.getInstance().deleteToken().await()
+    }
 }

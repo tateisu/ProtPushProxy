@@ -9,10 +9,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
-import jp.juggler.pushreceiverapp.R
 import jp.juggler.pushreceiverapp.ActAlert.Companion.intentActAlert
+import jp.juggler.pushreceiverapp.R
 import jp.juggler.pushreceiverapp.notification.NotificationChannels
+import jp.juggler.pushreceiverapp.notification.NotificationDeleteReceiver.Companion.intentNotificationDelete
 import jp.juggler.util.AdbLog
 import jp.juggler.util.withCaption
 import kotlinx.coroutines.CancellationException
@@ -23,13 +25,10 @@ import kotlin.coroutines.EmptyCoroutineContext
 /**
  * トーストの代わりに使えるような、単純なメッセージを表示する通知
  */
-private const val piTapRequestCode = 0
-private const val notificationId = 1
 
 fun Context.showAlertNotification(
     message: String,
     title: String = getString(R.string.alert),
-    priority: Int = NotificationCompat.PRIORITY_HIGH,
 ) {
     if (ActivityCompat.checkSelfPermission(
             this,
@@ -40,25 +39,31 @@ fun Context.showAlertNotification(
         return
     }
 
+    val nc = NotificationChannels.Alert
+
     val now = System.currentTimeMillis()
     val tag = "${System.currentTimeMillis()}/${message.hashCode()}"
+    val uri = "${nc.uriPrefixDelete}/$tag"
 
     // Create an explicit intent for an Activity in your app
     val iTap = intentActAlert(tag = tag, message = message, title = title)
+    val iDelete = intentNotificationDelete(uri.toUri())
+    val piTap = PendingIntent.getActivity(this, nc.pircTap, iTap, PendingIntent.FLAG_IMMUTABLE)
+    val piDelete =
+        PendingIntent.getBroadcast(this, nc.pircDelete, iDelete, PendingIntent.FLAG_IMMUTABLE)
 
-    val piTap =
-        PendingIntent.getActivity(this, piTapRequestCode, iTap, PendingIntent.FLAG_IMMUTABLE)
+    val builder = NotificationCompat.Builder(this, nc.id).apply{
+        priority = nc.priority
+        setSmallIcon(R.drawable.nc_error)
+        setContentTitle(title)
+        setContentText(message)
+        setWhen(now)
+        setContentIntent(piTap)
+        setDeleteIntent(piDelete)
+        setAutoCancel(true)
+    }
 
-    val builder = NotificationCompat.Builder(this, NotificationChannels.Alert.id)
-        .setSmallIcon(R.drawable.nc_error)
-        .setContentTitle(title)
-        .setContentText(message)
-        .setPriority(priority)
-        .setWhen(now)
-        .setContentIntent(piTap)
-        .setAutoCancel(true)
-
-    NotificationManagerCompat.from(this).notify(tag, notificationId, builder.build())
+    NotificationManagerCompat.from(this).notify(tag, nc.notificationId, builder.build())
 }
 
 fun Context.dialogOrAlert(message: String) {
@@ -73,9 +78,17 @@ fun Context.dialogOrAlert(message: String) {
 }
 
 fun Context.showError(ex: Throwable, message: String) {
-    AdbLog.e(ex, message)
-    if (ex is CancellationException) return
-    dialogOrAlert(ex.withCaption(message))
+    when (ex) {
+        is CancellationException -> Unit
+        is IllegalStateException -> {
+            AdbLog.e(ex, message)
+            dialogOrAlert(ex.message ?: ex.cause?.message ?: "?")
+        }
+        else -> {
+            AdbLog.e(ex, message)
+            dialogOrAlert(ex.withCaption(message))
+        }
+    }
 }
 
 fun AppCompatActivity.launchAndShowError(

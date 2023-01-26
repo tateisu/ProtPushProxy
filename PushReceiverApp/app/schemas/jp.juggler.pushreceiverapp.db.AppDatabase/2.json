@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "577e0b1621665898b35e1a40c4c8ef0f",
+    "identityHash": "f18e7d4b17e83d711aecdab7b427d20e",
     "entities": [
       {
         "tableName": "clients",
@@ -50,7 +50,7 @@
       },
       {
         "tableName": "saved_account",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `ap_domain` TEXT NOT NULL, `user_name` TEXT NOT NULL, `token_json` TEXT NOT NULL, `account_json` TEXT NOT NULL, `server_json` TEXT NOT NULL, `push_key_private` BLOB, `push_key_public` BLOB, `push_auth_secret` BLOB, `push_server_key` BLOB)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `ap_domain` TEXT NOT NULL, `user_name` TEXT NOT NULL, `token_json` TEXT NOT NULL, `account_json` TEXT NOT NULL, `server_json` TEXT NOT NULL, `push_key_private` BLOB, `push_key_public` BLOB, `push_auth_secret` BLOB, `push_server_key` BLOB, `app_server_hash` TEXT)",
         "fields": [
           {
             "fieldPath": "dbId",
@@ -117,6 +117,12 @@
             "columnName": "push_server_key",
             "affinity": "BLOB",
             "notNull": false
+          },
+          {
+            "fieldPath": "appServerHash",
+            "columnName": "app_server_hash",
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -143,7 +149,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '577e0b1621665898b35e1a40c4c8ef0f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f18e7d4b17e83d711aecdab7b427d20e')"
     ]
   }
 }

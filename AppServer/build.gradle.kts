@@ -2,12 +2,13 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     kotlin("jvm") version "1.7.21"
+    kotlin("plugin.serialization") version "1.8.0"
     application
     id( "com.github.johnrengelman.shadow") version "7.1.2"
 }
 
-group = "org.example"
-version = "1.0-SNAPSHOT"
+group = "jp.juggler.subwaytooter.appServerV2"
+version = "0.0.1"
 
 repositories {
     mavenCentral()
@@ -20,7 +21,6 @@ dependencies {
     val exposedVersion = "0.41.1"
     val h2Version = "2.1.214"
     val ktorVersion = "2.2.2"
-    val log4jVersion = "2.19.0"
 
     implementation("com.h2database:h2:$h2Version")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
@@ -30,11 +30,13 @@ dependencies {
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-double-receive:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("org.apache.logging.log4j:log4j-core:$log4jVersion")
-    implementation("org.apache.logging.log4j:log4j-slf4j-impl:$log4jVersion")
+    implementation("ch.qos.logback:logback-classic:1.4.5")
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1")
+    implementation("commons-codec:commons-codec:1.15")
+    implementation("com.zaxxer:HikariCP:5.0.1")
 }
 
 tasks.test {
@@ -47,4 +49,11 @@ tasks.withType<KotlinCompile> {
 
 application {
     mainClass.set("MainKt")
+}
+tasks.jar {
+    manifest {
+        // 警告よけ
+        // > WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
+        attributes[ "Multi-Release"] = "true"
+    }
 }

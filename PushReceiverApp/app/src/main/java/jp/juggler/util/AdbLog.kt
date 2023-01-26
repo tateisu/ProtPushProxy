@@ -1,7 +1,7 @@
 package jp.juggler.util
 
 import android.util.Log
-import jp.juggler.base.BuildConfig
+import jp.juggler.pushreceiverapp.BuildConfig
 import java.io.PrintWriter
 import java.io.StringWriter
 import kotlin.math.min

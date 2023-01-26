@@ -46,6 +46,8 @@ data class SavedAccount(
     var pushAuthSecret: ByteArray? = null,
     @ColumnInfo(name = COL_PUSH_SERVER_KEY)
     var pushServerKey: ByteArray? = null,
+    @ColumnInfo(name = COL_APP_SERVER_HASH)
+    var appServerHash: String? = null,
 ) {
     companion object {
         const val TABLE = "saved_account"
@@ -60,6 +62,7 @@ data class SavedAccount(
         const val COL_PUSH_KEY_PUBLIC = "push_key_public"
         const val COL_PUSH_AUTH_SECRET = "push_auth_secret"
         const val COL_PUSH_SERVER_KEY = "push_server_key"
+        const val COL_APP_SERVER_HASH = "app_server_hash"
     }
     @Dao
     abstract class Access {
@@ -71,6 +74,12 @@ data class SavedAccount(
 
         @Query("SELECT * FROM $TABLE where $COL_USER_NAME=:userName and $COL_AP_DOMAIN=:apDomain")
         abstract suspend fun find(userName: String, apDomain: String): SavedAccount?
+        @Transaction
+        open suspend fun find(acct: String): SavedAccount? {
+            val cols = acct.split("@", limit = 2)
+            if (cols.size != 2) error("incorrect acct $acct")
+            return find(cols[0], cols[1])
+        }
 
         @Insert
         abstract suspend fun insert(a: SavedAccount): Long

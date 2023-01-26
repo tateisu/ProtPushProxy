@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "577e0b1621665898b35e1a40c4c8ef0f",
+    "identityHash": "26711faf6a5788360cd2757973d0677a",
     "entities": [
       {
         "tableName": "clients",
@@ -50,7 +50,7 @@
       },
       {
         "tableName": "saved_account",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `ap_domain` TEXT NOT NULL, `user_name` TEXT NOT NULL, `token_json` TEXT NOT NULL, `account_json` TEXT NOT NULL, `server_json` TEXT NOT NULL, `push_key_private` BLOB, `push_key_public` BLOB, `push_auth_secret` BLOB, `push_server_key` BLOB)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `api_host` TEXT NOT NULL, `ap_domain` TEXT NOT NULL, `user_name` TEXT NOT NULL, `token_json` TEXT NOT NULL, `account_json` TEXT NOT NULL, `server_json` TEXT NOT NULL, `push_key_private` BLOB, `push_key_public` BLOB, `push_auth_secret` BLOB, `push_server_key` BLOB, `app_server_hash` TEXT)",
         "fields": [
           {
             "fieldPath": "dbId",
@@ -117,6 +117,12 @@
             "columnName": "push_server_key",
             "affinity": "BLOB",
             "notNull": false
+          },
+          {
+            "fieldPath": "appServerHash",
+            "columnName": "app_server_hash",
+            "affinity": "TEXT",
+            "notNull": false
           }
         ],
         "primaryKey": {
@@ -138,12 +144,98 @@
           }
         ],
         "foreignKeys": []
+      },
+      {
+        "tableName": "push_message",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`message_db_id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `login_acct` TEXT NOT NULL, `message_json` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `time_save` INTEGER NOT NULL, `time_dismiss` INTEGER NOT NULL, `message_long` TEXT, `message_short` TEXT, `icon_small` TEXT, `icon_large` TEXT, `header_json` TEXT NOT NULL, `raw_body` BLOB)",
+        "fields": [
+          {
+            "fieldPath": "messageDbId",
+            "columnName": "message_db_id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginAcct",
+            "columnName": "login_acct",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageJson",
+            "columnName": "message_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeSave",
+            "columnName": "time_save",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timeDismiss",
+            "columnName": "time_dismiss",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageLong",
+            "columnName": "message_long",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "messageShort",
+            "columnName": "message_short",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "iconSmall",
+            "columnName": "icon_small",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "iconLarge",
+            "columnName": "icon_large",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "headerJson",
+            "columnName": "header_json",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rawBody",
+            "columnName": "raw_body",
+            "affinity": "BLOB",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "message_db_id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
       }
     ],
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '577e0b1621665898b35e1a40c4c8ef0f')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '26711faf6a5788360cd2757973d0677a')"
     ]
   }
 }

@@ -3,27 +3,20 @@ package jp.juggler.pushreceiverapp.push
 import android.content.Context
 import jp.juggler.pushreceiverapp.alert.showAlertNotification
 import jp.juggler.pushreceiverapp.alert.showError
-import jp.juggler.pushreceiverapp.api.PushSubscriptionApi
-import jp.juggler.pushreceiverapp.db.appDatabase
-import jp.juggler.util.AppDispatchers
 import jp.juggler.util.EmptyScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import okhttp3.OkHttpClient
 import org.unifiedpush.android.connector.MessagingReceiver
 
 class UpMessageReceiver : MessagingReceiver() {
 
     // メインスレッドで呼ばれる
     override fun onMessage(context: Context, message: ByteArray, instance: String) {
-        runBlocking {
+        EmptyScope.launch  {
             try {
-                PushRepo(
-                    api = PushSubscriptionApi(OkHttpClient()),
-                    accountAccess = context.appDatabase.accountAccess()
-                ).handleUpMessage(context, instance, message)
+                context.pushRepo.handleUpMessage(context, message)
             } catch (ex: Throwable) {
-                context.showError(ex, "onNewEndpoint failed.")
+                context.showError(ex, "onMessage failed.")
             }
         }
     }
@@ -31,12 +24,9 @@ class UpMessageReceiver : MessagingReceiver() {
     // メインスレッドで呼ばれる
     override fun onNewEndpoint(context: Context, endpoint: String, instance: String) {
         context.showAlertNotification("onNewEndpoint: instance=$instance endpoint=$endpoint, thread=${Thread.currentThread().name}")
-        EmptyScope.launch(AppDispatchers.DEFAULT) {
+        EmptyScope.launch {
             try {
-                PushRepo(
-                    api = PushSubscriptionApi(OkHttpClient()),
-                    accountAccess = context.appDatabase.accountAccess()
-                ).newEndpoint(context, instance, endpoint)
+                context.pushRepo.newEndpoint(context, endpoint)
             } catch (ex: Throwable) {
                 context.showError(ex, "onNewEndpoint failed.")
             }

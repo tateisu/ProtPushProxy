@@ -15,8 +15,8 @@ import kotlinx.coroutines.launch
 
 class ProgressDialog(val activity: AppCompatActivity) {
 
-    val views = DlgProgressBinding.inflate(activity.layoutInflater)
-    val dialog = Dialog(activity)
+    private val views = DlgProgressBinding.inflate(activity.layoutInflater)
+    private val dialog = Dialog(activity)
 
     suspend fun <T : Any?> run(
         message: String,
@@ -24,13 +24,18 @@ class ProgressDialog(val activity: AppCompatActivity) {
         cancellable: Boolean,
         block: suspend (ProgressDialog.ProgressReporter) -> T?
     ): T? = ProgressReporter().use { reporter ->
-        dialog.setContentView(views.root)
-        reporter.setMessage(message)
-        reporter.setTitle(title)
-        dialog.setCancelable(cancellable)
-        dialog.setCanceledOnTouchOutside(cancellable)
-        block(reporter)
-    }.also { dialog.dismissSafe() }
+        try {
+            dialog.setContentView(views.root)
+            reporter.setMessage(message)
+            reporter.setTitle(title)
+            dialog.setCancelable(cancellable)
+            dialog.setCanceledOnTouchOutside(cancellable)
+            dialog.show()
+            block(reporter)
+        } finally {
+            dialog.dismissSafe()
+        }
+    }
 
     inner class ProgressReporter : AutoCloseable {
         private val channelMessage = Channel<Runnable>(capacity = Channel.CONFLATED)

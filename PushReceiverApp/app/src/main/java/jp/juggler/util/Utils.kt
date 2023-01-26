@@ -1,17 +1,30 @@
 package jp.juggler.util
 
+import android.content.Context
 import android.content.DialogInterface
+import android.graphics.Bitmap
+import android.graphics.drawable.Drawable
 import android.net.Uri
-import android.util.Base64
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import com.bumptech.glide.Glide
+import com.bumptech.glide.request.target.CustomTarget
+import com.bumptech.glide.request.transition.Transition
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.apache.commons.codec.binary.Base64
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.reflect.full.callSuspend
@@ -24,9 +37,10 @@ fun Throwable.withCaption(caption: String? = null) =
         else -> "$caption :${javaClass.simpleName} $message"
     }
 
-fun <T : CharSequence> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
 fun <T : CharSequence> T?.notBlank() = if (this.isNullOrBlank()) null else this
+fun <T : CharSequence> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
 fun <T : List<*>> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
+fun ByteArray?.notEmpty() = if (this == null || this.isEmpty()) null else this
 // fun <T : Collection<*>> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
 
 fun Int?.notZero() = if (this == null || this == 0) null else this
@@ -119,21 +133,76 @@ fun String.ellipsize(limit: Int = 128) = when {
 }
 
 fun ByteArray.encodeBase64(): String =
-    Base64.encodeToString(this, Base64.NO_PADDING or Base64.NO_WRAP)
+    Base64.encodeBase64String(this)
 
 fun ByteArray.encodeBase64Url(): String =
-    Base64.encodeToString(this, Base64.NO_PADDING or Base64.NO_WRAP or Base64.URL_SAFE)
+    Base64.encodeBase64URLSafeString(this)
 
-fun String.decodeBase64(): ByteArray? = try {
-    Base64.decode(this, Base64.DEFAULT)
+fun String.decodeBase64(): ByteArray =
+    Base64.decodeBase64(this)!!
+
+fun ByteArray.digestSHA256(): ByteArray {
+    val digest = MessageDigest.getInstance("SHA-256")
+    digest.reset()
+    return digest.digest(this)
+}
+
+fun String.encodeUTF8() = toByteArray(StandardCharsets.UTF_8)
+
+fun ByteArray.decodeUTF8() = toString(StandardCharsets.UTF_8)
+
+@OptIn(ExperimentalCoroutinesApi::class)
+suspend fun Context.loadIcon(url: String?): Bitmap? = try {
+    suspendCancellableCoroutine<Bitmap?> { cont ->
+        @Suppress("ThrowableNotThrown")
+        val target = object : CustomTarget<Bitmap>() {
+            override fun onLoadFailed(errorDrawable: Drawable?) {
+                AdbLog.w("onLoadFailed. url=$url")
+                cont.resume(null) {}
+            }
+
+            override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
+                cont.resume(resource) { resource.recycle() }
+            }
+
+            override fun onLoadCleared(placeholder: Drawable?) {
+                AdbLog.w("onLoadCleared. url=$url")
+                cont.resume(null) {}
+            }
+        }
+        Glide.with(this)
+            .asBitmap()
+            .load(url)
+            .into(target)
+        cont.invokeOnCancellation {
+            Glide.with(this).clear(target)
+        }
+    }
 } catch (ex: Throwable) {
-    AdbLog.e("decodeBase64 failed. ${ellipsize(128)}")
+    AdbLog.w(ex, "url=$url")
     null
 }
 
-fun String.decodeBase64Url(): ByteArray? = try {
-    Base64.decode(this, Base64.NO_PADDING or Base64.NO_WRAP or Base64.URL_SAFE)
-} catch (ex: Throwable) {
-    AdbLog.e("decodeBase64Url failed. ${ellipsize(128)}")
+fun String.parseTime() = if (isBlank()) {
     null
+} else try {
+    Instant.parse(this)
+} catch (ex: Throwable) {
+    AdbLog.w("parseTime failed. $this")
+    null
+}?.toEpochMilliseconds()
+
+fun Long.formatTime(): String {
+    val tz = TimeZone.currentSystemDefault()
+    val lt = Instant.fromEpochMilliseconds(this).toLocalDateTime(tz)
+    return "%d/%02d/%02d %02d:%02d:%02d.%03d".format(
+        lt.year,
+        lt.monthNumber,
+        lt.dayOfMonth,
+        lt.hour,
+        lt.minute,
+        lt.second,
+        lt.nanosecond / 1_000_000,
+    )
 }
+

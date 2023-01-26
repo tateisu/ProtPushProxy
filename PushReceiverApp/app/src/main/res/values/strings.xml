@@ -11,4 +11,12 @@
     <string name="add_account">Add account</string>
     <string name="push_distributor">Push distributor</string>
     <string name="none">none</string>
+    <string name="not_found">Not found</string>
+    <string name="missing_message_of">Missing information for message id %1$d</string>
+    <string name="error">Error</string>
+    <string name="missing_login_account_of">missing login data of %1$s</string>
+    <string name="notification_to">%1$s notification</string>
+    <string name="push_message">Push message</string>
+    <string name="push_message_desc">shows various push messages from SNS server.</string>
+    <string name="message_history">message history</string>
 </resources>
