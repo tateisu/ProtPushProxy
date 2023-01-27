@@ -19,4 +19,7 @@
     <string name="push_message">Push message</string>
     <string name="push_message_desc">shows various push messages from SNS server.</string>
     <string name="message_history">message history</string>
+    <string name="push_subscription_update">Push subscription update</string>
+    <string name="push_subscription_update_desc">indicated background job to register/unregister push subscription</string>
+    <string name="account_remove_conrirm_of">account %1$s is removed from this app. (not deletion from server) Are you sure?</string>
 </resources>

@@ -6,7 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import jp.juggler.pushreceiverapp.push.pushRepo
 import jp.juggler.util.AdbLog
-import kotlinx.coroutines.runBlocking
+import jp.juggler.util.EmptyScope
+import kotlinx.coroutines.launch
 
 class NotificationDeleteReceiver : BroadcastReceiver() {
     companion object {
@@ -17,17 +18,12 @@ class NotificationDeleteReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
-        runBlocking {
+        EmptyScope.launch {
             try {
                 val uri = intent?.data?.toString()
                 AdbLog.i("onReceive uri=$uri")
                 when {
-                    uri == null ->
-                        Unit
-
-                    uri.startsWith(NotificationChannels.Alert.uriPrefixDelete) ->
-                        Unit
-
+                    uri == null -> Unit
                     uri.startsWith(NotificationChannels.PushMessage.uriPrefixDelete) ->
                         context.pushRepo.onDeleteNotification(uri)
                 }

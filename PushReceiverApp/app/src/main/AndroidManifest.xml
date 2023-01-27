@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="true"
@@ -79,5 +81,10 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/colorFcmNotification" />
+
+        <service
+            android:name="jp.juggler.pushreceiverapp.push.SubscriptionUpdateService"
+            android:foregroundServiceType="dataSync"
+            />
     </application>
 </manifest>

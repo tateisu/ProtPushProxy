@@ -13,6 +13,7 @@ import jp.juggler.pushreceiverapp.push.WebPushCrypt.Companion.parseSemicoron
 import jp.juggler.util.AdbLog
 import jp.juggler.util.AppDispatchers
 import jp.juggler.util.EmptyScope
+import jp.juggler.util.JsonObject
 import jp.juggler.util.decodeBase64
 import jp.juggler.util.decodeJsonObject
 import jp.juggler.util.decodeUTF8
@@ -22,7 +23,6 @@ import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import jp.juggler.util.parseTime
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -51,13 +51,14 @@ class PushRepo(
     private val crypt: WebPushCrypt = WebPushCrypt(),
 ) {
     companion object {
-        val reHttp = """https?://""".toRegex()
+        private val reHttp = """https?://""".toRegex()
 
         @Suppress("RegExpSimplifiable")
         private val reTailDigits = """([0-9]+)\z""".toRegex()
 
         const val JSON_CAME_FROM = "<>cameFrom"
         const val CAME_FROM_UNIFIED_PUSH = "unifiedPush"
+        const val CAME_FROM_FCM = "fcm"
 
         val messageUpdate = MutableStateFlow(0L)
 
@@ -79,26 +80,36 @@ class PushRepo(
         }
     }
 
-    fun switchDistributor(context: Context, packageName: String) {
-        // UPの全インスタンスの登録解除
-        // ブロードキャストを何もなげておらず、イベントは発生しない
-        UnifiedPush.forceRemoveDistributor(context)
-        // UPは全体で同じdistributorを持つ
-        UnifiedPush.saveDistributor(context, packageName)
-        // 何らかの理由で登録は壊れることがあるため、登録し直す
-        UnifiedPush.registerApp(context)
-    }
+    /**
+     * UPでプッシュサービスを選ぶと呼ばれる
+     */
+    fun switchDistributor(
+        context: Context,
+        upPackageName: String? = null,
+        fcmToken: String? = null,
+    ) {
+        // Unified購読の削除
+        // 実際に購読があればブロードキャストを受け取るだろう
+        UnifiedPush.unregisterApp(context)
 
-    fun removePush(context: Context) {
-        EmptyScope.launch(AppDispatchers.DEFAULT) {
-            try {
-                // UPの全インスタンスの登録解除
-                // ブロードキャストを何もなげておらず、イベントは発生しない
-                UnifiedPush.forceRemoveDistributor(context)
-                // FCMの解除
-                context.fcmHandler.deleteToken(context)
-            } catch (ex: Throwable) {
-                AdbLog.e(ex, "removePush failed.")
+        when {
+            upPackageName != null -> {
+                context.prefDevice.pushDistributor = upPackageName
+                // UPは全体で同じdistributorを持つ
+                UnifiedPush.saveDistributor(context, upPackageName)
+                // 何らかの理由で登録は壊れることがあるため、登録し直す
+                UnifiedPush.registerApp(context)
+                // 少し後にonNewEndpointが発生するので、続きはそこで
+            }
+            fcmToken != null -> {
+                context.prefDevice.pushDistributor = PrefDevice.PUSH_DISTRIBUTOR_FCM
+                // 特にイベントは来ないので、プッシュ購読をやりなおす
+                SubscriptionUpdateService.launch(context)
+            }
+            else -> {
+                context.prefDevice.pushDistributor = PrefDevice.PUSH_DISTRIBUTOR_NONE
+                // 購読解除
+                SubscriptionUpdateService.launch(context)
             }
         }
     }
@@ -106,58 +117,132 @@ class PushRepo(
     /**
      * UnifiedPushのエンドポイントが決まったら呼ばれる
      */
-    suspend fun newEndpoint(context: Context, upEndpoint: String) {
+    fun newEndpoint(context: Context, upEndpoint: String) {
+        val upPackageName = UnifiedPush.getDistributor(context).notEmpty()
+            ?: error("missing upPackageName")
+        if (upPackageName != context.prefDevice.pushDistributor) {
+            AdbLog.w("newEndpoint: race condition detected!")
+        }
+
+        // 古いエンドポイントを別プロパティに覚えておく
+        context.prefDevice.upEndpoint
+            ?.takeIf { it.isNotEmpty() && it != upEndpoint }
+            ?.let { context.prefDevice.upEndpointExpired = it }
+
+        context.prefDevice.upEndpoint = upEndpoint
+
+        // 購読の更新
+        SubscriptionUpdateService.launch(context)
+    }
+
+    /**
+     * ワーカーから呼ばれる。購読の更新を行う
+     */
+    suspend fun subscriptionUpdate(context: Context) {
         val prefDevice = context.prefDevice
-        val oldFcmToken = prefDevice.fcmToken
-        if (!oldFcmToken.isNullOrEmpty()) {
-            try {
+
+        try {
+            // 期限切れのFCMトークンがあればそれ経由の中継を解除する
+            prefDevice.fcmTokenExpired.notEmpty()?.let {
+                AdbLog.i("remove fcmTokenExpired")
                 appServerApi.endpointRemove(
                     upUrl = null,
-                    fcmToken = oldFcmToken,
+                    fcmToken = it,
                 )
-            } catch (ex: Throwable) {
-                AdbLog.w(ex, "can't forgot oldFcmToken")
-                // エラーにしない
+                prefDevice.fcmTokenExpired = null
             }
+        } catch (ex: Throwable) {
+            AdbLog.w(ex, "can't forgot fcmTokenExpired")
         }
-        val oldEndpoint = prefDevice.upEndpoint
-        if (!oldEndpoint.isNullOrEmpty() && oldEndpoint != upEndpoint) {
-            try {
+        try {
+            // 期限切れのUPエンドポイントがあればそれ経由の中継を解除する
+            prefDevice.upEndpointExpired.notEmpty()?.let {
+                AdbLog.i("remove upEndpointExpired")
                 appServerApi.endpointRemove(
-                    upUrl = oldEndpoint,
+                    upUrl = it,
                     fcmToken = null,
                 )
-            } catch (ex: Throwable) {
-                AdbLog.w(ex, "can't forgot oldFcmToken")
-                // エラーにしない
+                prefDevice.upEndpointExpired = null
             }
+        } catch (ex: Throwable) {
+            AdbLog.w(ex, "can't forgot upEndpointExpired")
         }
-        prefDevice.upEndpoint = upEndpoint
+
         val accounts = accountAccess.load()
-        // acctHash => account
+
+        // map of acctHash to account
         val acctHashMap = accounts.associateBy {
             it.acct.encodeUTF8().digestSHA256().encodeBase64Url()
         }
-        if (acctHashMap.isNotEmpty()) {
-            // アプリサーバにendpointを登録する
-            val json = appServerApi.endpointUpsert(
-                upUrl = upEndpoint,
-                fcmToken = null,
-                acctHashList = acctHashMap.keys.toList(),
-            )
-            // acctHash => appServerHash のマップが返ってくる
-            // アカウントに覚える
-            for (acctHash in json.keys) {
-                val a = acctHashMap[acctHash] ?: continue
-                a.appServerHash = json.string(acctHash) ?: continue
-                accountAccess.save(a)
+        val acctHashList = acctHashMap.keys.toList()
+        if (acctHashMap.isEmpty()) {
+            AdbLog.w("acctHashMap is empty. no need to update register endpoint")
+            return
+        }
+
+        // アプリサーバにendpointを登録する
+        var canRemoveSubscription = false
+        val json = when (prefDevice.pushDistributor) {
+            PrefDevice.PUSH_DISTRIBUTOR_NONE -> {
+                AdbLog.i("acctHashMap is empty. no need to update register endpoint")
+                canRemoveSubscription = true
+                null
             }
-            accounts.forEach {
-                try {
-                    updateUpSubscriptionMastodon(context, it)
-                } catch (ex: Throwable) {
-                    AdbLog.w(ex, "updateUpSubscriptionMastodon failed. ${it.acct}")
+            null, "", PrefDevice.PUSH_DISTRIBUTOR_FCM -> {
+                val fcmToken = prefDevice.fcmToken
+                if (fcmToken.isNullOrEmpty()) {
+                    AdbLog.w("missing fcmToken. can't register endpoint.")
+                    null
+                } else {
+                    AdbLog.i("endpointUpsert fcm ")
+                    appServerApi.endpointUpsert(
+                        upUrl = null,
+                        fcmToken = fcmToken,
+                        acctHashList = acctHashList
+                    )
                 }
+            }
+            else -> {
+                val upEndpoint = prefDevice.upEndpoint
+                if (upEndpoint.isNullOrEmpty()) {
+                    AdbLog.w("missing upEndpoint. can't register endpoint.")
+                    null
+                } else {
+                    AdbLog.i("endpointUpsert up ")
+                    appServerApi.endpointUpsert(
+                        upUrl = upEndpoint,
+                        fcmToken = null,
+                        acctHashList = acctHashList
+                    )
+                }
+            }
+        }
+        when {
+            json.isNullOrEmpty() ->
+                AdbLog.i("no information of appServerHash.")
+            else -> {
+                // acctHash => appServerHash のマップが返ってくる
+                // アカウントに覚える
+                var saveCount = 0
+                for (acctHash in json.keys) {
+                    val a = acctHashMap[acctHash] ?: continue
+                    a.appServerHash = json.string(acctHash) ?: continue
+                    accountAccess.save(a)
+                    ++saveCount
+                }
+                AdbLog.i("appServerHash updated. saveCount=$saveCount")
+            }
+        }
+
+        accounts.forEach {
+            try {
+                updateUpSubscriptionMastodon(
+                    context,
+                    it,
+                    canRemoveSubscription = canRemoveSubscription
+                )
+            } catch (ex: Throwable) {
+                AdbLog.e(ex, "[${it.acct}] updateSubscription failed.")
             }
         }
     }
@@ -165,8 +250,11 @@ class PushRepo(
     /**
      * SNSサーバに購読を行う
      */
-    private suspend fun updateUpSubscriptionMastodon(context: Context, a: SavedAccount) {
-
+    private suspend fun updateUpSubscriptionMastodon(
+        context: Context,
+        a: SavedAccount,
+        canRemoveSubscription: Boolean,
+    ) {
         val appServerHash = a.appServerHash
         if (appServerHash.isNullOrEmpty()) {
             AdbLog.i("${a.acct} has no appServerHash.")
@@ -185,48 +273,61 @@ class PushRepo(
                 throw ex
             }
         }
+        AdbLog.i("${a.acct} oldSubscription=${oldSubscription}")
 
-        val urlPrefix = "https://mastodon-msg.juggler.jp/api/v2/m"
-        val newUrl = "${urlPrefix}/a_${appServerHash}/dh_${deviceHash}"
-        AdbLog.i("newUrl=$newUrl")
+        val appServerUrlPrefix = "https://mastodon-msg.juggler.jp/api/v2/m"
+        val newUrl = "${appServerUrlPrefix}/a_${appServerHash}/dh_${deviceHash}"
 
         val oldEndpointUrl = oldSubscription?.string("endpoint")
-        if (oldEndpointUrl == null) {
+        when (oldEndpointUrl) {
             // 購読がない。作ってもよい
-        } else {
-            val params = buildMap {
-                if (oldEndpointUrl.startsWith(urlPrefix)) {
-                    oldEndpointUrl.substring(urlPrefix.length)
-                        .split("/")
-                        .forEach { pair ->
-                            val cols = pair.split("_", limit = 2)
-                            cols.elementAtOrNull(0).notEmpty()?.let { k ->
-                                put(k, cols.elementAtOrNull(1) ?: "")
+            null -> Unit
+            else -> {
+                val params = buildMap {
+                    if (oldEndpointUrl.startsWith(appServerUrlPrefix)) {
+                        oldEndpointUrl.substring(appServerUrlPrefix.length)
+                            .split("/")
+                            .forEach { pair ->
+                                val cols = pair.split("_", limit = 2)
+                                cols.elementAtOrNull(0)?.notEmpty()?.let { k ->
+                                    put(k, cols.elementAtOrNull(1) ?: "")
+                                }
                             }
-                        }
+                    }
                 }
-            }
-            val oldDeviceHash = params["dh"]
-            if (oldDeviceHash != deviceHash) {
-                // この端末で作成した購読ではない。
-                AdbLog.w("updateUpSubscriptionMastodon deviceHash not match. acct=${a.acct}, oldEndpoint=${oldEndpointUrl}")
-                return
+                if (params["dh"] != deviceHash) {
+                    // この端末で作成した購読ではない。
+                    AdbLog.w("subscription deviceHash not match. keep it for other devices. ${a.acct} $oldEndpointUrl")
+                    return
+                }
             }
         }
 
-        if (newUrl != oldEndpointUrl.toString()) {
+        if (canRemoveSubscription) {
+            when (oldSubscription) {
+                null -> {
+                    AdbLog.i("subscription is not exist, not required. nothing to do. ${a.acct}")
+                }
+                else -> {
+                    AdbLog.i("removing unnecessary subscription. ${a.acct}")
+                    pushApi.deletePushSubscription(a)
+                }
+            }
+            return
+        }
+
+        val alerts = PushSubscriptionApi.alertTypes.associateWith { true }
+        if (newUrl != oldEndpointUrl) {
+            AdbLog.i("${a.acct} createPushSubscription")
             val keyPair = crypt.generateKeyPair()
-
             val auth = ByteArray(16).also { SecureRandom().nextBytes(it) }
-
             val p256dh = crypt.encodeP256Dh(keyPair.public as ECPublicKey)
-
             val response = pushApi.createPushSubscription(
                 a = a,
                 endpointUrl = newUrl,
                 p256dh = p256dh.encodeBase64Url(),
                 auth = auth.encodeBase64Url(),
-                alerts = PushSubscriptionApi.alertTypes.associateWith { true },
+                alerts = alerts,
                 policy = "all",
             )
             val serverKeyStr = response.string("server_key")
@@ -244,9 +345,25 @@ class PushRepo(
             a.pushAuthSecret = auth
             a.pushServerKey = serverKey
             accountAccess.save(a)
+        } else {
+            // エンドポイントURLに変化なし
+            // Alertの更新はしたいかもしれない
+            // XXX
         }
-        // XXX: alertの更新を行う可能性がある
-        // val alerts = PushSubscriptionApi.alertTypes.associateWith { true }
+        AdbLog.i("updateUpSubscriptionMastodon complete. ${a.acct}")
+    }
+
+    //////////////////////////////////////////////////////////////////////////////
+    // メッセージの処理
+
+    suspend fun handleFcmMessage(context: Context, data: Map<String, String>) {
+        saveRawMessage(
+            context = context,
+            acctHash = data["ah"].notEmpty() ?: error("missing ah"),
+            headerJson = data["hj"]?.decodeJsonObject() ?: error("missing hj"),
+            body = data["b"]?.decodeBase64() ?: error("missing b"),
+            cameFrom = CAME_FROM_FCM
+        )
     }
 
     suspend fun handleUpMessage(context: Context, message: ByteArray) {
@@ -274,14 +391,32 @@ class PushRepo(
             return subBytes
         }
 
-        val targetAcctHash = readSubBytes().decodeUTF8()
-        val headerJson = readSubBytes().decodeUTF8().decodeJsonObject()
+        // 順に読む
+        val acctHash = readSubBytes()
+        val headerJson = readSubBytes()
         val body = readSubBytes()
-        val a = accountAccess.load().find {
-            targetAcctHash == it.acct.encodeUTF8().digestSHA256().encodeBase64Url()
-        } ?: error("missing account for acctHash $targetAcctHash")
 
-        headerJson[JSON_CAME_FROM] = CAME_FROM_UNIFIED_PUSH
+        saveRawMessage(
+            context = context,
+            acctHash = acctHash.decodeUTF8(),
+            headerJson = headerJson.decodeUTF8().decodeJsonObject(),
+            body = body,
+            cameFrom = CAME_FROM_UNIFIED_PUSH
+        )
+    }
+
+    private suspend fun saveRawMessage(
+        context: Context,
+        acctHash: String,
+        headerJson: JsonObject,
+        body: ByteArray,
+        cameFrom: String,
+    ) {
+        val a = accountAccess.load().find {
+            acctHash == it.acct.encodeUTF8().digestSHA256().encodeBase64Url()
+        } ?: error("missing account for acctHash $acctHash")
+
+        headerJson[JSON_CAME_FROM] = cameFrom
 
         val pm = PushMessage(
             loginAcct = a.acct,
@@ -290,16 +425,16 @@ class PushRepo(
         )
         pushMessageAccess.save(pm)
         fireMessageUpdated()
-        decodeUpPushMessage(pm)
+        decodeMessageContent(pm)
         context.showSnsNotification(pm)
     }
 
     suspend fun reDecode(context: Context, pm: PushMessage) {
-        decodeUpPushMessage(pm)
+        decodeMessageContent(pm)
         context.showSnsNotification(pm)
     }
 
-    private suspend fun decodeUpPushMessage(pm: PushMessage) {
+    private suspend fun decodeMessageContent(pm: PushMessage) {
         val a = accountAccess.find(pm.loginAcct)
             ?: error("missing login account ${pm.loginAcct}")
 
@@ -309,7 +444,7 @@ class PushRepo(
         val headerJson = pm.headerJson
         AdbLog.i("headerJson=$headerJson")
         //        headerJson={
-        //            "Digest":"SHA-256=XXXXXXXXX",
+        //            "Digest":"SHA-256=nnn",
         //            "Content-Encoding":"aesgcm",
         //            "Encryption":"salt=75n4Si2vAVv2xZFXnIh5Ww",
         //            "Crypto-Key":"dh=XXX;p256ecdsa=XXX",
@@ -372,24 +507,6 @@ class PushRepo(
         fireMessageUpdated()
     }
 
-    suspend fun handleFcmMessage(context: Context, a: String) {
-        delay(10)
-//        val pm = PushMessage(
-//            loginAcct = a.acct,
-//            messageJson = json,
-//            timestamp = timestamp ?: System.currentTimeMillis(),
-//            messageLong = messageLong,
-//            messageShort = messageShort,
-//            iconSmall =  json.string("badge").followDomain(),
-//            iconLarge =  json.string("icon").followDomain(),
-//        )
-//        context.showSnsNotification(
-//            message = a,
-//            title = "no title",
-//            iconUrlLarge = null,
-//        )
-    }
-
     suspend fun onDeleteNotification(uri: String) {
         val messageDbId = reTailDigits.find(uri)?.groupValues?.elementAtOrNull(0)
             ?.toLongOrNull()
@@ -403,4 +520,3 @@ class PushRepo(
         }
     }
 }
-

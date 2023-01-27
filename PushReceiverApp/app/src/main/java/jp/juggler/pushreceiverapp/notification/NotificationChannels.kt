@@ -29,9 +29,9 @@ enum class NotificationChannels(
     // pending intent request code for tap
     val pircTap: Int,
     // pending intent request code for delete
-    val pircDelete:Int,
+    val pircDelete: Int,
     // 通知削除のUri prefix
-    val uriPrefixDelete:String,
+    val uriPrefixDelete: String,
 ) {
     Alert(
         id = "Alert",
@@ -39,8 +39,8 @@ enum class NotificationChannels(
         descId = R.string.alert_notification_desc,
         importance = NotificationManagerCompat.IMPORTANCE_HIGH,
         priority = NotificationCompat.PRIORITY_HIGH,
-        notificationId=1,
-        pircTap=0,
+        notificationId = 1,
+        pircTap = 0,
         pircDelete = 1,
         uriPrefixDelete = "pushreceiverapp://alert",
     ),
@@ -50,10 +50,21 @@ enum class NotificationChannels(
         descId = R.string.push_message_desc,
         importance = NotificationManagerCompat.IMPORTANCE_HIGH,
         priority = NotificationCompat.PRIORITY_HIGH,
-        notificationId=2,
-        pircTap=2,
+        notificationId = 2,
+        pircTap = 2,
         pircDelete = 3,
         uriPrefixDelete = "pushreceiverapp://pushMessage",
+    ),
+    SubscriptionUpdate(
+        id = "SubscriptionUpdate",
+        titleId = R.string.push_subscription_update,
+        descId = R.string.push_subscription_update_desc,
+        importance = NotificationManagerCompat.IMPORTANCE_LOW,
+        priority = NotificationCompat.PRIORITY_LOW,
+        notificationId = 3,
+        pircTap = 4,
+        pircDelete = 5,
+        uriPrefixDelete = "pushreceiverapp://subscriptionUpdate",
     ),
 }
 

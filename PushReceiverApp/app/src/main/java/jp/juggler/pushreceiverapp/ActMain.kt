@@ -9,27 +9,24 @@ import android.widget.AdapterView
 import android.widget.BaseAdapter
 import androidx.appcompat.app.AppCompatActivity
 import jp.juggler.pushreceiverapp.ActMessageList.Companion.intentActMessageList
-import jp.juggler.pushreceiverapp.alert.dialogOrAlert
 import jp.juggler.pushreceiverapp.alert.launchAndShowError
 import jp.juggler.pushreceiverapp.alert.showAlertNotification
-import jp.juggler.pushreceiverapp.api.AppServerApi
-import jp.juggler.pushreceiverapp.api.AuthApi
-import jp.juggler.pushreceiverapp.api.PushSubscriptionApi
-import jp.juggler.pushreceiverapp.auth.AuthRepo
+import jp.juggler.pushreceiverapp.auth.authRepo
 import jp.juggler.pushreceiverapp.databinding.ActMainBinding
 import jp.juggler.pushreceiverapp.databinding.LvAccountBinding
 import jp.juggler.pushreceiverapp.db.SavedAccount
-import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.actionsDialog
+import jp.juggler.pushreceiverapp.dialog.confirm
 import jp.juggler.pushreceiverapp.dialog.dialogServerHost
 import jp.juggler.pushreceiverapp.dialog.runInProgress
 import jp.juggler.pushreceiverapp.permission.permissionSpecNotification
 import jp.juggler.pushreceiverapp.permission.requester
-import jp.juggler.pushreceiverapp.push.PushRepo
+import jp.juggler.pushreceiverapp.push.PrefDevice
 import jp.juggler.pushreceiverapp.push.fcmHandler
+import jp.juggler.pushreceiverapp.push.prefDevice
+import jp.juggler.pushreceiverapp.push.pushRepo
 import jp.juggler.util.*
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import org.unifiedpush.android.connector.UnifiedPush
 
 class ActMain : AppCompatActivity() {
@@ -38,24 +35,14 @@ class ActMain : AppCompatActivity() {
         ActMainBinding.inflate(layoutInflater)
     }
 
-    private val prNotification = permissionSpecNotification.requester {
-    }
+    private val prNotification = permissionSpecNotification.requester()
 
     private val authRepo by lazy {
-        AuthRepo(
-            api = AuthApi(okHttp = OkHttpClient()),
-            clientAccess = appDatabase.clientAccess(),
-            accountAccess = appDatabase.accountAccess(),
-        )
+        applicationContext.authRepo
     }
+
     private val pushRepo by lazy {
-        val okHttp = OkHttpClient()
-        PushRepo(
-            accountAccess = appDatabase.accountAccess(),
-            pushMessageAccess = appDatabase.pushMessageAccess(),
-            pushApi = PushSubscriptionApi(okHttp),
-            appServerApi = AppServerApi(okHttp),
-        )
+        applicationContext.pushRepo
     }
 
     private val accountsAdapter = MyAdapter()
@@ -142,31 +129,61 @@ class ActMain : AppCompatActivity() {
 
     private fun pushDistributor() = launchAndShowError {
         val context = this@ActMain
+        val prefDevice = context.prefDevice
+        val lastDistributor = prefDevice.pushDistributor
+        val fcmToken = fcmHandler.fcmToken.value
+
+        fun String.appendChecked(checked: Boolean) = when (checked) {
+            true -> "$this ✅"
+            else -> this
+        }
+
         actionsDialog {
-//            if (FcmHandler.hasFcm) {
-//                val lastSelected = false // XXX
-//                action("FCM") {
-//                    // アプリサーバのエンドポイントがまだないので何もできない
-//                }
-//            }
-            for (packageName in UnifiedPush.getDistributors(
-                context,
-                features = ArrayList(listOf(UnifiedPush.FEATURE_BYTES_MESSAGE))
-            )) {
+
+            if (fcmHandler.hasFcm && !fcmToken.isNullOrEmpty()) {
                 val lastSelected = false // XXX
-                action("$packageName ${if (lastSelected) " *" else ""}") {
+                action("FCM".appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_FCM)) {
                     runInProgress(cancellable = false) {
                         withContext(AppDispatchers.DEFAULT) {
-                            pushRepo.switchDistributor(context, packageName)
+                            pushRepo.switchDistributor(context, fcmToken = fcmToken)
                         }
                     }
                 }
             }
-            action(getString(R.string.none)) {
+
+            for (packageName in UnifiedPush.getDistributors(
+                context,
+                features = ArrayList(listOf(UnifiedPush.FEATURE_BYTES_MESSAGE))
+            )) {
+                action(packageName.appendChecked(lastDistributor == packageName)) {
+                    runInProgress(cancellable = false) {
+                        withContext(AppDispatchers.DEFAULT) {
+                            pushRepo.switchDistributor(context, upPackageName = packageName)
+                        }
+                    }
+                }
+            }
+            action(getString(R.string.none).appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_NONE)) {
                 runInProgress(cancellable = false) {
                     withContext(AppDispatchers.DEFAULT) {
-                        pushRepo.removePush(context)
+                        pushRepo.switchDistributor(context, null, null)
                     }
+                }
+            }
+        }
+    }
+
+    fun accountActions(a: SavedAccount) {
+        launchAndShowError {
+            actionsDialog {
+                action("アクセストークンの更新") {
+                    val uri = authRepo.authStep1(a.apiHost, forceUpdate = true)
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                }
+                action("このリストから削除") {
+                    confirm(getString(R.string.account_remove_conrirm_of, a.acct))
+                    authRepo.removeAccount(a)
+                    loadAccountList()
                 }
             }
         }
@@ -198,7 +215,7 @@ class ActMain : AppCompatActivity() {
                 .views.root
 
         override fun onItemClick(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-            dialogOrAlert("onItemClick not implemented.")
+            getItem(position)?.let{ accountActions(it) }
         }
     }
 }

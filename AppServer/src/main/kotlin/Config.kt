@@ -16,6 +16,8 @@ class Config {
     var dbUser = ""
     var dbPassword = ""
 
+    var fcmCredentialPath = ""
+
     private fun parseOptionValue(k: String, v: String) {
         when (k) {
             "verbose" -> verbose = v.isTruth()
@@ -27,6 +29,9 @@ class Config {
             "dbDriver" -> dbDriver = v
             "dbUser" -> dbUser = v
             "dbPassword" -> dbPassword = v
+
+            "fcmCredentialPath" -> fcmCredentialPath = v
+
             else -> error("unknown key: $k")
         }
     }

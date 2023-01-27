@@ -1,16 +1,29 @@
 package jp.juggler.pushreceiverapp.auth
 
+import android.content.Context
 import android.net.Uri
 import jp.juggler.pushreceiverapp.api.ApiError
 import jp.juggler.pushreceiverapp.api.AuthApi
 import jp.juggler.pushreceiverapp.db.Client
 import jp.juggler.pushreceiverapp.db.SavedAccount
+import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.util.AdbLog
 import jp.juggler.util.AppDispatchers
 import jp.juggler.util.JsonObject
 import jp.juggler.util.notEmpty
 import jp.juggler.util.notZero
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+
+val Context.authRepo: AuthRepo
+    get() {
+        val db = appDatabase
+        return AuthRepo(
+            api = AuthApi(okHttp = OkHttpClient()),
+            clientAccess = db.clientAccess(),
+            accountAccess = db.accountAccess(),
+        )
+    }
 
 class AuthRepo(
     private val api: AuthApi,
@@ -165,7 +178,7 @@ class AuthRepo(
 
     suspend fun authStep1(
         apiHost: String,
-        forceUpdate: Boolean = true,
+        forceUpdate: Boolean = false,
     ): Uri {
         val scopes = SCOPES
 
@@ -301,5 +314,9 @@ class AuthRepo(
                 .notZero()?.let { return@sortedWith it }
             0
         }
+    }
+
+   suspend fun removeAccount(a: SavedAccount) {
+        accountAccess.delete(a)
     }
 }

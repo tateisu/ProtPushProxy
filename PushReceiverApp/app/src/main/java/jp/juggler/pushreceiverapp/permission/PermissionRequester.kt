@@ -33,7 +33,7 @@ class PermissionRequester(
      * 権限が与えられた際に処理を再開するラムダ
      * - ラムダの引数にこのPermissionRequester自身が渡される
      */
-    val onGrant: (PermissionRequester) -> Unit,
+    private val onGrant: ((PermissionRequester) -> Unit)? = null,
 ) : ActivityResultCallback<Map<String, Boolean>> {
 
     private var launcher: ActivityResultLauncher<Array<String>>? = null
@@ -120,7 +120,7 @@ class PermissionRequester(
             val listNotGranted = result.entries.filter { !it.value }.map { it.key }
             if (listNotGranted.isEmpty()) {
                 // すべて許可されている
-                onGrant(this)
+                onGrant?.invoke(this)
                 return
             }
             // 許可されなかった。
@@ -151,5 +151,5 @@ class PermissionRequester(
     }
 }
 
-fun PermissionSpec.requester(onGrant: (PermissionRequester) -> Unit) =
+fun PermissionSpec.requester(onGrant: ((PermissionRequester) -> Unit)? = null) =
     PermissionRequester(this, onGrant)

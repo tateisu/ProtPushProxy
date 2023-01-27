@@ -1,7 +1,6 @@
 package util
 
 import io.ktor.server.application.ApplicationCall
-import io.ktor.server.application.call
 import io.ktor.util.pipeline.PipelineContext
 import org.apache.commons.codec.binary.Base64
 import org.apache.commons.codec.digest.DigestUtils
@@ -57,4 +56,5 @@ fun String.decodeBase64UrlSafe(): ByteArray =
 fun ByteArray.digestSHA256(): ByteArray =
     DigestUtils.sha256(this)
 
-fun <T:CharSequence> T?.notEmpty() = if(this.isNullOrEmpty()) null else this
+fun <T : CharSequence> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
+fun <T : CharSequence> T?.notBlank() = if (this.isNullOrBlank()) null else this

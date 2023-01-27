@@ -4,7 +4,7 @@ plugins {
     kotlin("jvm") version "1.7.21"
     kotlin("plugin.serialization") version "1.8.0"
     application
-    id( "com.github.johnrengelman.shadow") version "7.1.2"
+    id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
 group = "jp.juggler.subwaytooter.appServerV2"
@@ -37,6 +37,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1")
     implementation("commons-codec:commons-codec:1.15")
     implementation("com.zaxxer:HikariCP:5.0.1")
+    implementation("com.google.firebase:firebase-admin:8.2.0")
 }
 
 tasks.test {
@@ -54,6 +55,6 @@ tasks.jar {
     manifest {
         // 警告よけ
         // > WARNING: sun.reflect.Reflection.getCallerClass is not supported. This will impact performance.
-        attributes[ "Multi-Release"] = "true"
+        attributes["Multi-Release"] = "true"
     }
 }

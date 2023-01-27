@@ -9,6 +9,7 @@ import jp.juggler.pushreceiverapp.alert.showError
 import jp.juggler.util.AdbLog
 import jp.juggler.util.AppDispatchers
 import jp.juggler.util.EmptyScope
+import jp.juggler.util.notEmpty
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -20,15 +21,22 @@ class FcmHandler(context: Context) {
         get() = !"""noFcm""".toRegex(RegexOption.IGNORE_CASE)
             .containsMatchIn(BuildConfig.FLAVOR)
 
-    suspend fun onTokenChanged(context: Context, token: String) {
+    suspend fun onTokenChanged(context: Context, token: String?) {
         if (token == context.prefDevice.fcmToken && token == fcmToken.value) return
+
+        if(!token.isNullOrEmpty()){
+            context.prefDevice.fcmToken
+                ?.takeIf{ it.isNotEmpty() && it != token}
+                ?.let{ context.prefDevice.fcmTokenExpired = it }
+        }
+
         context.prefDevice.fcmToken = token
         fcmToken.emit(token)
     }
 
-    suspend fun onMessageReceived(context: Context, a: String) {
+    suspend fun onMessageReceived(context: Context, data:Map<String,String>) {
         try {
-            context.pushRepo.handleFcmMessage(context, a)
+            context.pushRepo.handleFcmMessage(context, data)
         } catch (ex: Throwable) {
             context.showError(ex, "onMessage failed.")
         }
@@ -36,8 +44,7 @@ class FcmHandler(context: Context) {
 
     suspend fun deleteToken(context: Context) {
         FcmTokenLoader().deleteToken()
-        context.prefDevice.fcmToken = null
-        fcmToken.emit(null)
+        onTokenChanged(context,null)
     }
 }
 

@@ -46,15 +46,10 @@ fun main(args: Array<String>) {
         .build()
     FirebaseApp.initializeApp(options)
 
-    @Suppress("SpellCheckingInspection")
-    val sdf = SimpleDateFormat(
-        "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-        Locale.getDefault()
-    )
+
 
     val message = Message.builder().apply {
         putData("title", "test")
-        putData("text" , "test ${sdf.format(Date())}")
         putData("imageUrl" , "https://m1j.zzz.ac/accounts/avatars/000/000/001/original/0705487e8628acaf.jpg")
 //        setNotification(Notification.builder().apply{
 //            setTitle("titleNt")
