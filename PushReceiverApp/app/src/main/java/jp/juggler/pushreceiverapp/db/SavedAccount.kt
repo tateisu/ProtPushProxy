@@ -12,6 +12,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import jp.juggler.pushreceiverapp.auth.AuthRepo
 import jp.juggler.util.*
+import kotlinx.coroutines.flow.Flow
 
 @Entity(
     tableName = SavedAccount.TABLE,
@@ -66,19 +67,34 @@ data class SavedAccount(
     }
     @Dao
     abstract class Access {
-        @Query("SELECT * FROM $TABLE")
+        @Query("SELECT * FROM $TABLE order by $COL_USER_NAME, $COL_AP_DOMAIN")
         abstract suspend fun load(): List<SavedAccount>
+
+        @Query("SELECT * FROM $TABLE order by $COL_USER_NAME, $COL_AP_DOMAIN")
+        abstract fun listFlow(): Flow<List<SavedAccount>>
 
         @Query("SELECT * FROM $TABLE where $COL_DB_ID=:dbId")
         abstract suspend fun find(dbId: Long): SavedAccount?
 
         @Query("SELECT * FROM $TABLE where $COL_USER_NAME=:userName and $COL_AP_DOMAIN=:apDomain")
         abstract suspend fun find(userName: String, apDomain: String): SavedAccount?
-        @Transaction
+        @Query("SELECT * FROM $TABLE where $COL_USER_NAME=:userName and $COL_AP_DOMAIN=:apDomain")
+        abstract fun findFlow(userName: String, apDomain: String): Flow<SavedAccount?>
+
         open suspend fun find(acct: String): SavedAccount? {
             val cols = acct.split("@", limit = 2)
-            if (cols.size != 2) error("incorrect acct $acct")
-            return find(cols[0], cols[1])
+            return find(
+                cols.elementAtOrNull(0) ?: "",
+                cols.elementAtOrNull(1) ?: "",
+            )
+        }
+
+        fun findFlow(acct: String?): Flow<SavedAccount?> {
+            val cols = acct?.split("@", limit = 2)
+            return findFlow(
+                cols?.elementAtOrNull(0) ?: "",
+                cols?.elementAtOrNull(1) ?: "",
+            )
         }
 
         @Insert
@@ -98,6 +114,7 @@ data class SavedAccount(
             }
             return a.dbId
         }
+
     }
 
     val acct: String

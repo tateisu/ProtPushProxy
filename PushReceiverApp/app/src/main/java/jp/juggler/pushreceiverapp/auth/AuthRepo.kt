@@ -8,11 +8,8 @@ import jp.juggler.pushreceiverapp.db.Client
 import jp.juggler.pushreceiverapp.db.SavedAccount
 import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.util.AdbLog
-import jp.juggler.util.AppDispatchers
 import jp.juggler.util.JsonObject
 import jp.juggler.util.notEmpty
-import jp.juggler.util.notZero
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 val Context.authRepo: AuthRepo
@@ -279,19 +276,13 @@ class AuthRepo(
     /**
      * アプリ内DBのアカウント情報を更新する
      */
-    suspend fun updateAccount(auth2Result: Auth2Result) {
-        val oldAccount = accountAccess.find(
+    suspend fun updateAccount(auth2Result: Auth2Result): SavedAccount {
+        var account = accountAccess.find(
             userName = auth2Result.userName,
             apDomain = auth2Result.apDomain
         )
-        if (oldAccount != null) {
-            oldAccount.apiHost = auth2Result.apiHost
-            oldAccount.accountJson = auth2Result.accountJson
-            oldAccount.tokenJson = auth2Result.tokenJson
-            oldAccount.serverJson = auth2Result.serverJson
-            accountAccess.save(oldAccount)
-        } else {
-            val a = SavedAccount(
+        when (account) {
+            null -> account = SavedAccount(
                 apiHost = auth2Result.apiHost,
                 apDomain = auth2Result.apDomain,
                 userName = auth2Result.userName,
@@ -299,24 +290,20 @@ class AuthRepo(
                 accountJson = auth2Result.accountJson,
                 serverJson = auth2Result.serverJson,
             )
-            accountAccess.save(a)
+            else -> {
+                account.apiHost = auth2Result.apiHost
+                account.accountJson = auth2Result.accountJson
+                account.tokenJson = auth2Result.tokenJson
+                account.serverJson = auth2Result.serverJson
+            }
         }
+        accountAccess.save(account)
+        return account
     }
 
-    /**
-     * アプリ内DBのアカウント情報の一覧
-     */
-    suspend fun accountList() = withContext(AppDispatchers.IO) {
-        accountAccess.load().sortedWith { a, b ->
-            a.userName.compareTo(b.userName)
-                .notZero()?.let { return@sortedWith it }
-            a.apDomain.compareTo(b.apDomain)
-                .notZero()?.let { return@sortedWith it }
-            0
-        }
-    }
-
-   suspend fun removeAccount(a: SavedAccount) {
+    suspend fun removeAccount(a: SavedAccount) =
         accountAccess.delete(a)
-    }
+
+    fun accountListFlow() = accountAccess.listFlow()
+
 }

@@ -1,7 +1,5 @@
 package util
 
-import io.ktor.server.application.ApplicationCall
-import io.ktor.util.pipeline.PipelineContext
 import org.apache.commons.codec.binary.Base64
 import org.apache.commons.codec.digest.DigestUtils
 import org.slf4j.Logger
@@ -17,12 +15,6 @@ fun String?.isTruth() = when (this?.lowercase()) {
     null, "", "0", "false", "off", "none", "no" -> false
     else -> true
 }
-
-val ApplicationCall.log
-    get() = application.environment.log
-
-val PipelineContext<*, ApplicationCall>.log
-    get() = context.application.environment.log
 
 // Android style log shorthand
 fun Logger.i(msg: String) = info(msg)

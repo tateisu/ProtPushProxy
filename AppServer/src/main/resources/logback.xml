@@ -5,9 +5,12 @@
             <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="trace">
+    <root level="info">
         <appender-ref ref="STDOUT"/>
     </root>
-    <logger name="io.netty" level="INFO"/>
-    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger level="info" name="io.netty"/>
+    <logger level="warn" name="com.zaxxer.hikari"/>
+    <logger level="warn" name="io.ktor.routing.Routing"/>
+    <logger level="warn" name="i.k.s.p.doublereceive"/>
+    <logger level="warn" name="i.k.server.engine"/>
 </configuration>

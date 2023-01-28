@@ -18,26 +18,33 @@
         app:flexWrap="wrap"
         android:layout_margin="12dp">
 
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/alert_test"
+        <ImageButton
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@string/alert_test"
+            android:src="@drawable/outline_add_alert_24"
+            app:tint="@color/colorText"
             android:layout_marginEnd="2dp"
             android:id="@+id/btnAlertTest"/>
 
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ImageButton
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_marginEnd="2dp"
-            android:text="@string/add_account"
+            android:contentDescription="@string/add_account"
+            android:src="@drawable/outline_person_add_24"
+            app:tint="@color/colorText"
             android:id="@+id/btnAddAccount"/>
 
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ImageButton
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_marginEnd="2dp"
-            android:text="@string/push_distributor"
+            android:contentDescription="@string/push_distributor"
+            android:src="@drawable/outline_delivery_dining_24"
+            app:tint="@color/colorText"
             android:id="@+id/btnPushDistributor"/>
+
         <Button
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -50,6 +57,10 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:id="@+id/tvStatus"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp"
+        android:minHeight="40dp"
+        android:gravity="center_vertical|start"
         />
 
     <ListView

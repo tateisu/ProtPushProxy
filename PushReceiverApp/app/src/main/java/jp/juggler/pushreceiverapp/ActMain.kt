@@ -8,9 +8,9 @@ import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.BaseAdapter
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkManager
 import jp.juggler.pushreceiverapp.ActMessageList.Companion.intentActMessageList
-import jp.juggler.pushreceiverapp.alert.launchAndShowError
-import jp.juggler.pushreceiverapp.alert.showAlertNotification
 import jp.juggler.pushreceiverapp.auth.authRepo
 import jp.juggler.pushreceiverapp.databinding.ActMainBinding
 import jp.juggler.pushreceiverapp.databinding.LvAccountBinding
@@ -19,13 +19,20 @@ import jp.juggler.pushreceiverapp.dialog.actionsDialog
 import jp.juggler.pushreceiverapp.dialog.confirm
 import jp.juggler.pushreceiverapp.dialog.dialogServerHost
 import jp.juggler.pushreceiverapp.dialog.runInProgress
+import jp.juggler.pushreceiverapp.notification.launchAndShowError
+import jp.juggler.pushreceiverapp.notification.showAlertNotification
 import jp.juggler.pushreceiverapp.permission.permissionSpecNotification
 import jp.juggler.pushreceiverapp.permission.requester
 import jp.juggler.pushreceiverapp.push.PrefDevice
 import jp.juggler.pushreceiverapp.push.fcmHandler
 import jp.juggler.pushreceiverapp.push.prefDevice
 import jp.juggler.pushreceiverapp.push.pushRepo
-import jp.juggler.util.*
+import jp.juggler.util.AdbLog
+import jp.juggler.util.AppDispatchers
+import jp.juggler.util.EmptyScope
+import jp.juggler.util.cast
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.unifiedpush.android.connector.UnifiedPush
 
@@ -58,12 +65,13 @@ class ActMain : AppCompatActivity() {
         views.btnAlertTest.setOnClickListener {
             showAlertNotification("this is a test.")
         }
-
         views.btnAddAccount.setOnClickListener {
             addAccount()
         }
         views.btnPushDistributor.setOnClickListener {
-            pushDistributor()
+            launchAndShowError {
+                pushDistributor()
+            }
         }
         views.btnMessageList.setOnClickListener {
             startActivity(intentActMessageList())
@@ -73,14 +81,34 @@ class ActMain : AppCompatActivity() {
         views.lvAccounts.onItemClickListener = accountsAdapter
 
         launchAndShowError {
-            fcmHandler.fcmToken.collect { showStatus() }
+            fcmHandler.fcmToken.collect {
+                showFcmToken(it)
+            }
+        }
+
+        lifecycleScope.launch {
+            authRepo.accountListFlow().collect {
+                accountsAdapter.items = it
+            }
         }
 
         if (savedInstanceState == null) {
             handleIntent(intent)
         }
 
-        loadAccountList()
+        // Workの掃除
+        WorkManager.getInstance(this).pruneWork()
+
+        // 定期的にendpointを再登録したい
+        pushRepo.launchEndpointRegistration(keepAliveMode = true)
+
+        EmptyScope.launch(AppDispatchers.IO) {
+            try {
+                pushRepo.sweepOldMessage()
+            } catch (ex: Throwable) {
+                AdbLog.e(ex, "sweepOldMessage failed.")
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -88,13 +116,30 @@ class ActMain : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    private fun handleIntent(intent: Intent?) {
+        val uri = intent?.data ?: return
+        launchAndShowError {
+            AdbLog.i("handleIntent: uri = $uri")
+            val auth2Result = authRepo.authStep2(uri)
+            authRepo.updateAccount(auth2Result)
+            // アカウントを追加/更新したらappServerHashの取得をやりなおす
+            when {
+                fcmHandler.noFcm && prefDevice.pushDistributor.isNullOrEmpty() -> {
+                    try {
+                        pushDistributor()
+                        // 選択したら
+                    } catch (_: CancellationException) {
+                        // 選択しなかった場合は購読の更新を行わない
+                    }
+                }
+                else -> pushRepo.launchEndpointRegistration()
+            }
+        }
+    }
+
     @SuppressLint("SetTextI18n")
-    private fun showStatus() {
-        val fcmToken = fcmHandler.fcmToken.value
-        AdbLog.i("fcmToken=$fcmToken")
-        views.tvStatus.text = """
-            fcmToken=${fcmToken}
-        """.trimIndent()
+    private fun showFcmToken(token: String?) {
+        views.tvStatus.text = "fcmToken=$token"
     }
 
     private fun addAccount() = launchAndShowError {
@@ -115,21 +160,9 @@ class ActMain : AppCompatActivity() {
         }
     }
 
-    private fun handleIntent(intent: Intent?) = launchAndShowError {
-        val uri = intent?.data ?: return@launchAndShowError
-        AdbLog.i("handleIntent: uri = $uri")
-        val auth2Result = authRepo.authStep2(uri)
-        authRepo.updateAccount(auth2Result)
-        loadAccountList()
-    }
-
-    private fun loadAccountList() = launchAndShowError {
-        accountsAdapter.items = authRepo.accountList()
-    }
-
-    private fun pushDistributor() = launchAndShowError {
+    private suspend fun pushDistributor() {
         val context = this@ActMain
-        val prefDevice = context.prefDevice
+        val prefDevice = prefDevice
         val lastDistributor = prefDevice.pushDistributor
         val fcmToken = fcmHandler.fcmToken.value
 
@@ -138,14 +171,21 @@ class ActMain : AppCompatActivity() {
             else -> this
         }
 
-        actionsDialog {
+        actionsDialog(
+            title = getString(R.string.select_push_delivery_service)
+        ) {
 
-            if (fcmHandler.hasFcm && !fcmToken.isNullOrEmpty()) {
-                val lastSelected = false // XXX
-                action("FCM".appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_FCM)) {
-                    runInProgress(cancellable = false) {
+            if (fcmHandler.hasFcm) {
+                action(
+                    getString(R.string.firebase_cloud_messaging)
+                        .appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_FCM)
+                ) {
+                    runInProgress(cancellable = false) { reporter ->
                         withContext(AppDispatchers.DEFAULT) {
-                            pushRepo.switchDistributor(context, fcmToken = fcmToken)
+                            pushRepo.switchDistributor(
+                                PrefDevice.PUSH_DISTRIBUTOR_FCM,
+                                reporter = reporter
+                            )
                         }
                     }
                 }
@@ -155,25 +195,37 @@ class ActMain : AppCompatActivity() {
                 context,
                 features = ArrayList(listOf(UnifiedPush.FEATURE_BYTES_MESSAGE))
             )) {
-                action(packageName.appendChecked(lastDistributor == packageName)) {
-                    runInProgress(cancellable = false) {
+                action(
+                    packageName
+                        .appendChecked(lastDistributor == packageName)
+                ) {
+                    runInProgress(cancellable = false) { reporter ->
                         withContext(AppDispatchers.DEFAULT) {
-                            pushRepo.switchDistributor(context, upPackageName = packageName)
+                            pushRepo.switchDistributor(
+                                packageName,
+                                reporter = reporter
+                            )
                         }
                     }
                 }
             }
-            action(getString(R.string.none).appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_NONE)) {
-                runInProgress(cancellable = false) {
+            action(
+                getString(R.string.none)
+                    .appendChecked(lastDistributor == PrefDevice.PUSH_DISTRIBUTOR_NONE)
+            ) {
+                runInProgress(cancellable = false) { reporter ->
                     withContext(AppDispatchers.DEFAULT) {
-                        pushRepo.switchDistributor(context, null, null)
+                        pushRepo.switchDistributor(
+                            PrefDevice.PUSH_DISTRIBUTOR_NONE,
+                            reporter = reporter
+                        )
                     }
                 }
             }
         }
     }
 
-    fun accountActions(a: SavedAccount) {
+    private fun accountActions(a: SavedAccount) {
         launchAndShowError {
             actionsDialog {
                 action("アクセストークンの更新") {
@@ -181,9 +233,9 @@ class ActMain : AppCompatActivity() {
                     startActivity(Intent(Intent.ACTION_VIEW, uri))
                 }
                 action("このリストから削除") {
-                    confirm(getString(R.string.account_remove_conrirm_of, a.acct))
+                    confirm(getString(R.string.account_remove_confirm_of, a.acct))
+                    pushRepo.updateSubscription(a, willRemoveSubscription = true)
                     authRepo.removeAccount(a)
-                    loadAccountList()
                 }
             }
         }
@@ -215,7 +267,7 @@ class ActMain : AppCompatActivity() {
                 .views.root
 
         override fun onItemClick(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-            getItem(position)?.let{ accountActions(it) }
+            getItem(position)?.let { accountActions(it) }
         }
     }
 }

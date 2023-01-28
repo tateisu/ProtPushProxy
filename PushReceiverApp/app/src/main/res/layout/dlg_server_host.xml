@@ -4,11 +4,17 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:labelFor="@+id/etHost"
+        android:minWidth="240dp"
         android:text="@string/server_host" />
 
     <EditText
@@ -17,6 +23,8 @@
         android:layout_height="wrap_content"
         android:importantForAutofill="no"
         android:inputType="text"
+        android:text="@string/mastodon_juggler_jp"
+        android:imeOptions="actionDone"
         android:minHeight="48dp" />
 
     <TextView
@@ -25,7 +33,7 @@
         android:layout_height="wrap_content"
         android:textColor="@color/colorTextError"
         tools:text="error." />
-
+    </LinearLayout>
     <LinearLayout
         style="?android:attr/buttonBarStyle"
         android:layout_width="match_parent"

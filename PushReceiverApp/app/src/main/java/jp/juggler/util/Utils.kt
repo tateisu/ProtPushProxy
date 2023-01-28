@@ -153,8 +153,8 @@ fun String.encodeUTF8() = toByteArray(StandardCharsets.UTF_8)
 fun ByteArray.decodeUTF8() = toString(StandardCharsets.UTF_8)
 
 @OptIn(ExperimentalCoroutinesApi::class)
-suspend fun Context.loadIcon(url: String?): Bitmap? = try {
-    suspendCancellableCoroutine<Bitmap?> { cont ->
+suspend fun Context.loadIcon(url: String?, size: Int? = null): Bitmap? = try {
+    suspendCancellableCoroutine { cont ->
         @Suppress("ThrowableNotThrown")
         val target = object : CustomTarget<Bitmap>() {
             override fun onLoadFailed(errorDrawable: Drawable?) {
@@ -174,6 +174,10 @@ suspend fun Context.loadIcon(url: String?): Bitmap? = try {
         Glide.with(this)
             .asBitmap()
             .load(url)
+            .apply {
+                @Suppress("CheckResult")
+                size?.let { override(it) }
+            }
             .into(target)
         cont.invokeOnCancellation {
             Glide.with(this).clear(target)
@@ -222,19 +226,20 @@ private val importanceMap = listOf(
     500 to "IMPORTANCE_EMPTY",
     1000 to "IMPORTANCE_GONE",
 )
-fun importanceString(n:Int):String=
+
+fun importanceString(n: Int): String =
     importanceMap.firstOrNull { it.first >= n }?.second ?: "(not found)"
 
-fun checkAppForeground() {
-    val appProcessInfo =  ActivityManager.RunningAppProcessInfo()
+fun checkAppForeground(caption: String) {
+    val appProcessInfo = ActivityManager.RunningAppProcessInfo()
     ActivityManager.getMyMemoryState(appProcessInfo)
-    when(val importance = appProcessInfo.importance){
+    when (val importance = appProcessInfo.importance) {
         ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND,
-        ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE ->{
-            AdbLog.w("app is foreground. $importance ${importanceString(importance)}")
+        ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE -> {
+            AdbLog.i("$caption: app is foreground. $importance ${importanceString(importance)} thread=${Thread.currentThread().name}")
         }
-        else-> {
-            AdbLog.w("app is background. $importance ${importanceString(importance)}")
+        else -> {
+            AdbLog.w("$caption: app is background. $importance ${importanceString(importance)} thread=${Thread.currentThread().name}")
         }
     }
 }

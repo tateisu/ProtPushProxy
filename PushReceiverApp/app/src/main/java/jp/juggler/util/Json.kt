@@ -291,7 +291,7 @@ class JsonObject : LinkedHashMap<String, Any?>() {
     }
 
     fun putIfTrue(key: String, value: Boolean) {
-        if (value) put(key, value)
+        if (value) put(key, true)
     }
 }
 

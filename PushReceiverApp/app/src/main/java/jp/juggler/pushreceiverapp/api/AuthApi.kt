@@ -6,7 +6,6 @@ import jp.juggler.util.JsonObject
 import jp.juggler.util.buildJsonObject
 import jp.juggler.util.encodeQuery
 import jp.juggler.util.jsonObjectOf
-import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import jp.juggler.util.toFormRequestBody
 import jp.juggler.util.toPost

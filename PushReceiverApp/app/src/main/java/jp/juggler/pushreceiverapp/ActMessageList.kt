@@ -12,15 +12,14 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bumptech.glide.Glide
 import jp.juggler.pushreceiverapp.ActMessage.Companion.intentActMessage
-import jp.juggler.pushreceiverapp.alert.launchAndShowError
 import jp.juggler.pushreceiverapp.databinding.ActMessageListBinding
 import jp.juggler.pushreceiverapp.databinding.LvMessageBinding
 import jp.juggler.pushreceiverapp.db.PushMessage
 import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.actionsDialog
 import jp.juggler.pushreceiverapp.dialog.runInProgress
+import jp.juggler.pushreceiverapp.notification.launchAndShowError
 import jp.juggler.pushreceiverapp.notification.notificationTypeToIconId
-import jp.juggler.pushreceiverapp.push.PushRepo
 import jp.juggler.pushreceiverapp.push.pushRepo
 import jp.juggler.util.AdbLog
 import jp.juggler.util.AppDispatchers
@@ -44,7 +43,7 @@ class ActMessageList : AppCompatActivity() {
     }
     private val listAdapter = MyAdapter()
 
-    private val layoutManager by lazy{
+    private val layoutManager by lazy {
         LinearLayoutManager(this)
     }
 
@@ -57,22 +56,15 @@ class ActMessageList : AppCompatActivity() {
 
         views.rvMessages.also {
             it.adapter = listAdapter
-            it.layoutManager =layoutManager
+            it.layoutManager = layoutManager
         }
 
         lifecycleScope.launch {
-            PushRepo.messageUpdate.collect {
-                AdbLog.i("messageUpdate $it")
-                load()
+            appDatabase.pushMessageAccess().listFlow().collect {
+                AdbLog.i("listFlow ${it.javaClass.simpleName}")
+                listAdapter.items = it
             }
         }
-    }
-
-    private suspend fun load() {
-        listAdapter.items = withContext(AppDispatchers.IO) {
-            appDatabase.pushMessageAccess().load()
-        }
-        AdbLog.i("load. items=${listAdapter.items.size}")
     }
 
     fun itemActions(pm: PushMessage) {
@@ -82,7 +74,7 @@ class ActMessageList : AppCompatActivity() {
                     startActivity(intentActMessage(pm.messageDbId))
                 }
                 action("再解釈") {
-                    pushRepo.reDecode(applicationContext, pm)
+                    pushRepo.reDecode(pm)
                 }
                 action("エクスポート") {
                     export(pm)
@@ -141,11 +133,10 @@ class ActMessageList : AppCompatActivity() {
                 .load(pm.iconLarge)
                 .into(views.ivLarge)
 
-            val t = pm.timestamp.formatTime()
             views.tvText.text = """
                 |loginAcct=${pm.loginAcct}
-                |timestamp=${t}
-                |messageShort=${pm.messageShort}
+                |timestamp=${pm.timestamp.formatTime()}
+                |timeDismiss=${pm.timeDismiss.takeIf { it > 0L }?.formatTime() ?: ""}
                 |messageLong=${pm.messageLong}
             """.trimMargin()
         }
@@ -155,7 +146,7 @@ class ActMessageList : AppCompatActivity() {
         var items: List<PushMessage> = emptyList()
             set(value) {
                 val oldScrollPos = layoutManager.findFirstVisibleItemPosition()
-                    .takeIf { it!=  RecyclerView.NO_POSITION }
+                    .takeIf { it != RecyclerView.NO_POSITION }
                 val oldItems = field
                 field = value
                 DiffUtil.calculateDiff(
@@ -175,7 +166,7 @@ class ActMessageList : AppCompatActivity() {
                     },
                     true
                 ).dispatchUpdatesTo(this)
-                if(oldScrollPos==0){
+                if (oldScrollPos == 0) {
                     launchAndShowError {
                         delay(50L)
                         views.rvMessages.smoothScrollToPosition(0)

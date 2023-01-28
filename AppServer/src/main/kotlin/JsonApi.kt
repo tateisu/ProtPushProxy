@@ -5,12 +5,13 @@ import io.ktor.server.application.call
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.util.pipeline.PipelineContext
+import org.slf4j.LoggerFactory
 import util.JsonObject
 import util.e
 import util.jsonObjectOf
-import util.log
 import util.withCaption
 
+private val log = LoggerFactory.getLogger("JsonApi")
 suspend fun JsonObject.respond(
     call: ApplicationCall,
     status: HttpStatusCode = HttpStatusCode.OK,
@@ -25,24 +26,28 @@ suspend fun String.respondError(
     status: HttpStatusCode = HttpStatusCode.InternalServerError,
 ) = jsonObjectOf("error" to this).respond(call, status)
 
-class GoneError(
+/**
+ * エラー応答を投げることのできる例外
+ */
+class RespondError(
     message: String,
     ex: Throwable? = null,
+    val status:HttpStatusCode = HttpStatusCode.InternalServerError,
 ) : IllegalStateException(message, ex)
 
 fun String.gone(): Nothing {
-    throw GoneError(this)
+    throw RespondError(this,status = HttpStatusCode.Gone)
 }
 
-suspend inline fun PipelineContext<*, ApplicationCall>.jsonApi(
-    block: () -> JsonObject,
+suspend fun PipelineContext<*, ApplicationCall>.jsonApi(
+    block: suspend () -> JsonObject,
 ) {
     try {
         block().respond(call)
     } catch (ex: Throwable) {
-        if (ex is GoneError) {
-            log.e("gone. ${ex.message}")
-            (ex.message ?: "gone").respondError(call, HttpStatusCode.Gone)
+        if (ex is RespondError) {
+            log.e("respondError ${ex.status} ${ex.message}")
+            (ex.message ?: "(null)").respondError(call,status = ex.status )
         } else {
             log.e(ex, "${call.request.uri} failed.")
             val message = ex.message

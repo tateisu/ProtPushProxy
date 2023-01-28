@@ -19,10 +19,12 @@ dependencies {
     testImplementation(kotlin("test"))
 
     val exposedVersion = "0.41.1"
-    val h2Version = "2.1.214"
     val ktorVersion = "2.2.2"
 
-    implementation("com.h2database:h2:$h2Version")
+    implementation("ch.qos.logback:logback-classic:1.4.5")
+    implementation("com.google.firebase:firebase-admin:8.2.0")
+    implementation("com.zaxxer:HikariCP:5.0.1")
+    implementation("commons-codec:commons-codec:1.15")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-logging:$ktorVersion")
@@ -30,14 +32,12 @@ dependencies {
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-double-receive:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("ch.qos.logback:logback-classic:1.4.5")
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1")
-    implementation("commons-codec:commons-codec:1.15")
-    implementation("com.zaxxer:HikariCP:5.0.1")
-    implementation("com.google.firebase:firebase-admin:8.2.0")
+    implementation("org.postgresql:postgresql:42.5.1")
+    implementation("com.impossibl.pgjdbc-ng:pgjdbc-ng:0.8.9")
 }
 
 tasks.test {

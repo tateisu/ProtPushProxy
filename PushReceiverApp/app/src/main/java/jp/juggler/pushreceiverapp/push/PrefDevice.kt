@@ -16,6 +16,7 @@ class PrefDevice(context: Context) {
         private const val PREF_UP_ENDPOINT = "upEndpoint"
         private const val PREF_UP_ENDPOINT_EXPIRED = "upEndpointExpired"
         private const val PREF_PUSH_DISTRIBUTOR = "pushDistributor"
+        private const val PREF_TIME_LAST_ENDPOINT_REGISTER = "timeLastEndpointRegister"
 
         const val PUSH_DISTRIBUTOR_FCM = "fcm"
         const val PUSH_DISTRIBUTOR_NONE = "none"
@@ -59,6 +60,13 @@ class PrefDevice(context: Context) {
         set(value) {
             sp.edit().putString(PREF_PUSH_DISTRIBUTOR, value).apply()
         }
+
+    var timeLastEndpointRegister: Long
+        get() = sp.getLong(PREF_TIME_LAST_ENDPOINT_REGISTER, 0L)
+        set(value) {
+            sp.edit().putLong(PREF_TIME_LAST_ENDPOINT_REGISTER, value).apply()
+        }
+
 }
 
 class PrefDeviceInitializer : Initializer<PrefDevice> {

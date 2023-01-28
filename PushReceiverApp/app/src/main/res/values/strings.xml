@@ -1,25 +1,41 @@
 <resources>
-    <string name="app_name">PushReceiverApp</string>
-    <string name="alert">Alert</string>
-    <string name="alert_notification_desc">shows various alerts</string>
+    <string name="app_name" translatable="false">PushReceiverApp</string>
+    <string name="mastodon_juggler_jp" translatable="false">mastodon.juggler.jp</string>
+
+    <!-- 権限の取得 -->
     <string name="permission_notifications_rational">this app requests permission to show notifications about alerts, push message, etc,.</string>
     <string name="permission_notifications_denied">missing permission to show notifications.</string>
     <string name="setting">setting</string>
-    <string name="alert_test">Alert test</string>
-    <string name="server_host">Server\'s host name</string>
-    <string name="hostname_empty">hostname is empty.</string>
-    <string name="add_account">Add account</string>
-    <string name="push_distributor">Push distributor</string>
-    <string name="none">none</string>
-    <string name="not_found">Not found</string>
-    <string name="missing_message_of">Missing information for message id %1$d</string>
-    <string name="error">Error</string>
-    <string name="missing_login_account_of">missing login data of %1$s</string>
-    <string name="notification_to">%1$s notification</string>
+
+    <!-- 通知チャネル -->
+    <string name="alert">Alert</string>
+    <string name="alert_notification_desc">shows various alerts</string>
     <string name="push_message">Push message</string>
     <string name="push_message_desc">shows various push messages from SNS server.</string>
+    <string name="push_worker">Push notification handler</string>
+    <string name="push_worker_desc">Handling tasks about push notification</string>
+
+    <!-- ボタン -->
+    <string name="alert_test">Alert test</string>
+    <string name="add_account">Add account</string>
+    <string name="push_distributor">Push distributor</string>
     <string name="message_history">message history</string>
-    <string name="push_subscription_update">Push subscription update</string>
-    <string name="push_subscription_update_desc">indicated background job to register/unregister push subscription</string>
-    <string name="account_remove_conrirm_of">account %1$s is removed from this app. (not deletion from server) Are you sure?</string>
+
+    <!-- アカウント追加-->
+    <string name="server_host">Server\'s host name</string>
+    <string name="hostname_empty">hostname is empty.</string>
+
+    <!-- アラート画面、メッセージ詳細画面 -->
+    <string name="error">Error</string>
+    <string name="missing_message_of">Missing information for message id %1$d</string>
+    <string name="missing_login_account_of">missing login data of %1$s</string>
+    <string name="notification_to">%1$s notification</string>
+
+    <!-- アカウント操作 -->
+    <string name="account_remove_confirm_of">Account %1$s is removed from this app. Not deletion from server. Are you sure?</string>
+
+    <!-- プッシュサービス選択 -->
+    <string name="select_push_delivery_service">Select push delivery service</string>
+    <string name="firebase_cloud_messaging">Firebase Cloud Messaging(FCM)</string>
+    <string name="none">none</string>
 </resources>

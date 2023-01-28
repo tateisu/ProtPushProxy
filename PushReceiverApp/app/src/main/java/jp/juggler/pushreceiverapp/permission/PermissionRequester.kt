@@ -13,7 +13,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import jp.juggler.pushreceiverapp.R
-import jp.juggler.pushreceiverapp.alert.showError
+import jp.juggler.pushreceiverapp.notification.showError
 import jp.juggler.util.AdbLog
 import jp.juggler.util.dismissSafe
 import kotlinx.coroutines.CancellationException

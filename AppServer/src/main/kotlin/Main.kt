@@ -1,5 +1,7 @@
-import db.AppDatabase
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import db.Endpoint
+import db.EndpointUsage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -20,21 +22,32 @@ import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
 import util.buildJsonObject
 import util.decodeJsonObject
 import util.decodeUTF8
+import util.e
 import util.encodeBase64UrlSafe
 import util.encodeUTF8
 import util.i
 import util.jsonObjectOf
-import util.log
 import util.notEmpty
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
 val ignoreHeaders = setOf(
@@ -52,8 +65,12 @@ val ignoreHeaders = setOf(
     "Urgency",
 )
 
+private val log = LoggerFactory.getLogger("Main")
+
 val config = Config()
 val verbose get() = config.verbose
+
+val tables = arrayOf(Endpoint.Meta, EndpointUsage.Meta)
 
 val client = HttpClient(CIO) {
     install(Logging) {
@@ -70,30 +87,77 @@ val client = HttpClient(CIO) {
 val sendFcm = SendFcm()
 val sendUnifiedPush = SendUnifiedPush(client)
 
+private fun createStatementsX(vararg tables: Table): List<String> {
+    if (tables.isEmpty()) return emptyList()
+
+    val toCreate = SchemaUtils.sortTablesByReferences(tables.toList())
+    val alters = arrayListOf<String>()
+    return toCreate.flatMap { table ->
+        val (create, alter) = table.ddl.partition { it.startsWith("CREATE ") }
+        val indicesDDL = table.indices.flatMap { SchemaUtils.createIndex(it) }
+        alters += alter
+        create + indicesDDL
+    } + alters
+}
+
 fun main(args: Array<String>) {
     val pid = ProcessHandle.current().pid()
-    val log = LoggerFactory.getLogger("Main")
-    log.i("main start! pid=$pid, pwd=${File(".").canonicalFile.parent}")
+    log.i("main start! pid=$pid, pwd=${File(".").canonicalFile}")
 
     config.parseArgs(args)
 
     File(config.pidFile).writeText(pid.toString())
 
-    AppDatabase.dbUrl = config.dbUrl
-    AppDatabase.dbDriver = config.dbDriver
-    AppDatabase.dbUser = config.dbUser
-    AppDatabase.dbPassword = config.dbPassword
-
     sendFcm.loadCredential(config.fcmCredentialPath)
 
-    AppDatabase.initializeSchema()
+    val dataSource = HikariConfig().apply {
+        driverClassName = config.dbDriver
+        jdbcUrl = config.dbUrl
+        username = config.dbUser
+        password = config.dbPassword
 
-    embeddedServer(
+    }.let { HikariDataSource(it) }
+
+    transaction(Database.connect(dataSource)) {
+        for (s in createStatementsX(tables = tables)) {
+            if (s.isNotBlank()) log.i("SCHEMA: $s")
+        }
+        SchemaUtils.create(tables = tables)
+    }
+
+    val timeJob = launchTimerJob()
+
+    val server = embeddedServer(
         Netty,
         host = config.listenHost,
         port = config.listenPort,
         module = Application::module
-    ).start(wait = true)
+    ).start(wait = false)
+    Runtime.getRuntime().addShutdownHook(Thread {
+        log.i("stop http server…")
+        server.stop(
+            gracePeriodMillis = TimeUnit.SECONDS.toMillis(1),
+            timeoutMillis = TimeUnit.SECONDS.toMillis(10),
+        )
+        log.i("stop timer job…")
+        runBlocking {
+            timeJob.cancelAndJoin()
+        }
+        log.i("shutdown complete.")
+    })
+    Thread.currentThread().join()
+}
+
+@OptIn(DelicateCoroutinesApi::class)
+fun launchTimerJob() = GlobalScope.launch(Dispatchers.IO) {
+    while (true) {
+        try {
+            delay(100000)
+        } catch (ex: Throwable) {
+            if (ex is CancellationException) break
+            log.e(ex, "timerJob error")
+        }
+    }
 }
 
 fun Application.module() {
@@ -135,11 +199,13 @@ fun Application.module() {
                     error("acctHashList is null or empty")
                 }
                 buildJsonObject {
-                    Endpoint.AccessImpl().upsert(
+                    val map = Endpoint.AccessImpl().upsert(
                         acctHashList = acctHashList,
                         upUrl = upUrl,
                         fcmToken = fcmToken
-                    ).entries.forEach { e -> put(e.key, e.value) }
+                    )
+                    EndpointUsage.AccessImpl().updateUsage(map.values.toSet())
+                    map.entries.forEach { e -> put(e.key, e.value) }
                 }
             }
         }
@@ -187,10 +253,10 @@ fun Application.module() {
                             headerJson.toString().encodeUTF8().writeSection()
                             body.writeSection()
                         }.toByteArray()
-                        log.i("size=${newBody.size} url=${upUrl}")
+                        log.i("send ${newBody.size}bytes to $upUrl")
                         sendUnifiedPush.send(newBody, upUrl)
-                    }.let {
-                        return@jsonApi jsonObjectOf("result" to "sent to UnifiedPush server.")
+                        EndpointUsage.AccessImpl().updateUsage1(appServerHash)
+                        jsonObjectOf("result" to "sent to UnifiedPush server.")
                     }
 
                     fcmToken != null -> withContext(Dispatchers.IO) {
@@ -199,10 +265,10 @@ fun Application.module() {
                             putData("ah", endpoint.acctHash.also { sum += it.length })
                             putData("hj", headerJson.toString().also { sum += it.length })
                             putData("b", body.encodeBase64UrlSafe().also { sum += it.length })
-                            log.i("size=${sum * 2} fcm")
+                            log.i("send ${sum * 2}bytes to fcm")
                         }
-                    }.let {
-                        return@jsonApi jsonObjectOf("result" to "sent to FCM. messageId=$it")
+                        EndpointUsage.AccessImpl().updateUsage1(appServerHash)
+                        jsonObjectOf("result" to "sent to FCM. messageId=$it")
                     }
 
                     else -> "missing redirect destination.".gone()

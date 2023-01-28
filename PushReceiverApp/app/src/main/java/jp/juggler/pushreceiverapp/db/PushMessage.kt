@@ -10,16 +10,21 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import jp.juggler.util.*
+import kotlinx.coroutines.flow.Flow
 
 @Entity(
     tableName = PushMessage.TABLE,
 )
 data class PushMessage(
+    // DBの主ID
     @PrimaryKey(autoGenerate = true)
     @ColumnInfo(name = COL_MESSAGE_DB_ID)
     var messageDbId: Long = 0L,
+
+    // 通知を受け取るアカウントのacct
     @ColumnInfo(name = COL_LOGIN_ACCT)
     var loginAcct: String = "",
+
     @ColumnInfo(name = COL_MESSAGE_JSON)
     var messageJson: JsonObject = JsonObject(),
     @ColumnInfo(name = COL_TIMESTAMP)
@@ -82,11 +87,26 @@ data class PushMessage(
             return a.messageDbId
         }
 
+        @Transaction
+        open suspend fun dismiss(messageId: Long) {
+            val pm = find(messageId) ?: return
+            if (pm.timeDismiss == 0L) {
+                pm.timeDismiss = System.currentTimeMillis()
+                update(pm)
+            }
+        }
+
         @Query("select * from $TABLE where $COL_MESSAGE_DB_ID=:messageId")
         abstract suspend fun find(messageId: Long): PushMessage?
 
+        @Query("select * from $TABLE where $COL_MESSAGE_DB_ID=:messageId")
+        abstract fun findFlow(messageId: Long): Flow<PushMessage?>
+
         @Query("select * from $TABLE order by $COL_MESSAGE_DB_ID desc")
-        abstract suspend fun load(): List<PushMessage>
+        abstract fun listFlow(): Flow<List<PushMessage>>
+
+        @Query("delete from $TABLE where $COL_TIME_SAVE <:expire")
+        abstract suspend fun sweepOld(expire: Long): Int
     }
 
     override fun hashCode(): Int = messageDbId.hashCode()

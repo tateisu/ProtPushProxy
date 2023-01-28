@@ -9,6 +9,7 @@
     <color name="white">#FFFFFFFF</color>
 
     <color name="colorTextError">#d00</color>
+    <color name="colorText">#FFF</color>
 
     <color name="colorFcmNotification">#1EC2DF</color>
 

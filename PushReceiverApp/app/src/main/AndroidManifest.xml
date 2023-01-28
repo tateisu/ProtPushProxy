@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".App1"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
@@ -16,7 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PushReceiverApp"
         tools:ignore="UnusedAttribute"
-        tools:targetApi="31">
+        tools:targetApi="33">
         <activity
             android:name=".ActMain"
             android:exported="true"
@@ -62,7 +63,17 @@
             <meta-data
                 android:name="jp.juggler.pushreceiverapp.push.FcmHandlerInitializer"
                 android:value="androidx.startup" />
+            <meta-data
+                android:name="jp.juggler.pushreceiverapp.push.PrefDeviceInitializer"
+                android:value="androidx.startup" />
+
+            <!-- WorkManagerの自動初期化をやめる -->
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
         </provider>
+
         <receiver
             android:name="jp.juggler.pushreceiverapp.push.UpMessageReceiver"
             android:exported="true"
@@ -82,9 +93,5 @@
             android:name="com.google.firebase.messaging.default_notification_color"
             android:resource="@color/colorFcmNotification" />
 
-        <service
-            android:name="jp.juggler.pushreceiverapp.push.SubscriptionUpdateService"
-            android:foregroundServiceType="dataSync"
-            />
     </application>
 </manifest>

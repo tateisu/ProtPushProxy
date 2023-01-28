@@ -1,9 +1,10 @@
 package jp.juggler.fcm
 
 /**
- * noFcmバージョンは常にnullを返す
+ * noFcmバージョン何もしない
  */
+@Suppress("RedundantSuspendModifier")
 class FcmTokenLoader {
-    @Suppress("RedundantSuspendModifier")
+    suspend fun deleteToken() = Unit
     suspend fun getToken(): String? = null
 }

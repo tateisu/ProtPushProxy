@@ -1,6 +1,5 @@
 package db
 
-import db.AppDatabase.dbQuery
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -25,7 +24,7 @@ data class Endpoint(
 ) {
     object Meta : Table("endpoints") {
         val acctHash = text("acct_hash")
-        val hashId = text("hash_id")
+        val hashId = text("hash_id").index()
         val upUrl = text("up_url").nullable()
         val fcmToken = text("fcm_token").nullable()
 
@@ -75,6 +74,12 @@ data class Endpoint(
                 .singleOrNull()
         }
 
+        /**
+         * 複数のEndpoint登録を更新する
+         *
+         * @returm map of acctHash to appServerHash
+         *
+         */
         override suspend fun upsert(
             acctHashList: List<String>,
             upUrl: String?,

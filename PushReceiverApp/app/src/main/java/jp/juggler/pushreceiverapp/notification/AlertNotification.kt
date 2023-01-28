@@ -1,4 +1,4 @@
-package jp.juggler.pushreceiverapp.alert
+package jp.juggler.pushreceiverapp.notification
 
 import android.Manifest
 import android.app.AlertDialog
@@ -13,7 +13,6 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import jp.juggler.pushreceiverapp.ActAlert.Companion.intentActAlert
 import jp.juggler.pushreceiverapp.R
-import jp.juggler.pushreceiverapp.notification.NotificationChannels
 import jp.juggler.pushreceiverapp.notification.NotificationDeleteReceiver.Companion.intentNotificationDelete
 import jp.juggler.util.AdbLog
 import jp.juggler.util.withCaption
@@ -52,7 +51,7 @@ fun Context.showAlertNotification(
     val piDelete =
         PendingIntent.getBroadcast(this, nc.pircDelete, iDelete, PendingIntent.FLAG_IMMUTABLE)
 
-    val builder = NotificationCompat.Builder(this, nc.id).apply{
+    val builder = NotificationCompat.Builder(this, nc.id).apply {
         priority = nc.priority
         setSmallIcon(R.drawable.nc_error)
         setContentTitle(title)
@@ -94,12 +93,10 @@ fun Context.showError(ex: Throwable, message: String) {
 fun AppCompatActivity.launchAndShowError(
     context: CoroutineContext = EmptyCoroutineContext,
     block: suspend () -> Unit
-) {
-    lifecycleScope.launch(context) {
-        try {
-            block()
-        } catch (ex: Throwable) {
-            showError(ex, "")
-        }
+) = lifecycleScope.launch(context) {
+    try {
+        block()
+    } catch (ex: Throwable) {
+        showError(ex, "")
     }
 }
