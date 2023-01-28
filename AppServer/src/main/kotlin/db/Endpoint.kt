@@ -3,6 +3,7 @@ package db
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -48,6 +49,8 @@ data class Endpoint(
             upUrl: String?,
             fcmToken: String?,
         ): Map<String, String>
+
+        suspend fun deleteIds(oldIds: List<String>): Int
     }
 
     class AccessImpl : Access {
@@ -108,6 +111,10 @@ data class Endpoint(
                     put(acctHash, hashId)
                 }
             }
+        }
+
+        override suspend fun deleteIds(oldIds: List<String>) = dbQuery {
+            Meta.deleteWhere { hashId.inList(oldIds) }
         }
     }
 }

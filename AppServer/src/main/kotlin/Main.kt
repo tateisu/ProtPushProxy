@@ -136,7 +136,7 @@ fun main(args: Array<String>) {
     Runtime.getRuntime().addShutdownHook(Thread {
         log.i("stop http server…")
         server.stop(
-            gracePeriodMillis = TimeUnit.SECONDS.toMillis(1),
+            gracePeriodMillis = 166L,
             timeoutMillis = TimeUnit.SECONDS.toMillis(10),
         )
         log.i("stop timer job…")
@@ -153,11 +153,20 @@ fun launchTimerJob() = GlobalScope.launch(Dispatchers.IO) {
     while (true) {
         try {
             delay(100000)
+            deleteOldEndpoints()
         } catch (ex: Throwable) {
             if (ex is CancellationException) break
             log.e(ex, "timerJob error")
         }
     }
+}
+
+suspend fun deleteOldEndpoints() {
+    val usageAccess = EndpointUsage.AccessImpl()
+    val endpointAccess = Endpoint.AccessImpl()
+    val oldIds = usageAccess.oldIds()
+    endpointAccess.deleteIds(oldIds)
+    usageAccess.deleteIds(oldIds)
 }
 
 fun Application.module() {
