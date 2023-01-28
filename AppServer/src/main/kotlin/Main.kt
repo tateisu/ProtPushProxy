@@ -44,6 +44,7 @@ import util.encodeBase64UrlSafe
 import util.encodeUTF8
 import util.i
 import util.jsonObjectOf
+import util.notBlank
 import util.notEmpty
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -106,7 +107,9 @@ fun main(args: Array<String>) {
 
     config.parseArgs(args)
 
-    File(config.pidFile).writeText(pid.toString())
+    config.pidFile.notBlank()?.let{
+        File(it).writeText(pid.toString())
+    }
 
     sendFcm.loadCredential(config.fcmCredentialPath)
 

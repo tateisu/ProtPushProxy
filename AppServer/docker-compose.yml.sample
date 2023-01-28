@@ -1,0 +1,43 @@
+version: '3'
+services:
+
+  # 129.168.2.2 でnginxが起動するまで待つ
+  delay:
+    # ubuntu 18.04未満ではncコマンドがプリインストールされている
+    image: ubuntu:14.04
+    command: >
+      /bin/bash -c "
+        while ! nc -z $BIND_HOST 443;
+        do
+          echo sleeping;
+          sleep 1;
+        done;
+        echo Connected!;
+        sleep 10;
+      "
+
+  # .envで指定したPOSTGRES_PASSWORD をコンテナ内部に渡す 
+  db:
+    restart: always
+    image: "postgres:${POSTGRES_VERSION}"
+    environment:
+      - POSTGRES_PASSWORD
+    volumes:
+      - ./pgData:/var/lib/postgresql/data
+    depends_on:
+      - delay
+    ports:
+      - "$BIND_HOST:3938:5432"
+
+  # commandは配列で書くとexecに渡されpid1になりSIGTERMを受け取れる
+  # 設定ファイルその他は appFiles フォルダに置く想定。config.txt や fcm.json
+  web:
+    restart: always
+    image: openjdk:17
+    volumes:
+      - ./appFiles:/app
+    working_dir: /app
+    command: ["java", "-jar", "appServer.jar", "-c", "config.txt"]
+    ports:
+      - "$BIND_HOST:3939:3939"
+

@@ -6,7 +6,7 @@ class Config {
 
     var verbose = false
 
-    var pidFile = "./pid"
+    var pidFile = "" // ""./pid"
 
     var listenHost = "0.0.0.0"
     var listenPort = 8080
