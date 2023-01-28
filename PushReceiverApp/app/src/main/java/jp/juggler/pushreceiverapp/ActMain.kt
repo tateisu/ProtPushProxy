@@ -1,25 +1,28 @@
 package jp.juggler.pushreceiverapp
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.view.View
 import android.view.ViewGroup
-import android.widget.AdapterView
-import android.widget.BaseAdapter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import androidx.work.WorkManager
-import jp.juggler.pushreceiverapp.ActMessageList.Companion.intentActMessageList
+import com.bumptech.glide.Glide
+import jp.juggler.pushreceiverapp.ActAccountList.Companion.intentActAccountList
+import jp.juggler.pushreceiverapp.ActMessage.Companion.intentActMessage
 import jp.juggler.pushreceiverapp.auth.authRepo
 import jp.juggler.pushreceiverapp.databinding.ActMainBinding
-import jp.juggler.pushreceiverapp.databinding.LvAccountBinding
-import jp.juggler.pushreceiverapp.db.SavedAccount
+import jp.juggler.pushreceiverapp.databinding.LvMessageBinding
+import jp.juggler.pushreceiverapp.db.PushMessage
+import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.actionsDialog
-import jp.juggler.pushreceiverapp.dialog.confirm
-import jp.juggler.pushreceiverapp.dialog.dialogServerHost
 import jp.juggler.pushreceiverapp.dialog.runInProgress
 import jp.juggler.pushreceiverapp.notification.launchAndShowError
+import jp.juggler.pushreceiverapp.notification.notificationTypeToIconId
 import jp.juggler.pushreceiverapp.notification.showAlertNotification
 import jp.juggler.pushreceiverapp.permission.permissionSpecNotification
 import jp.juggler.pushreceiverapp.permission.requester
@@ -30,16 +33,30 @@ import jp.juggler.pushreceiverapp.push.pushRepo
 import jp.juggler.util.AdbLog
 import jp.juggler.util.AppDispatchers
 import jp.juggler.util.EmptyScope
-import jp.juggler.util.cast
+import jp.juggler.util.encodeBase64Url
+import jp.juggler.util.formatTime
+import jp.juggler.util.saveToDownload
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.unifiedpush.android.connector.UnifiedPush
+import java.io.PrintWriter
 
 class ActMain : AppCompatActivity() {
+    companion object {
+        fun Context.intentActMain() =
+            Intent(this, ActMain::class.java)
+    }
 
     private val views by lazy {
         ActMainBinding.inflate(layoutInflater)
+    }
+
+    private val listAdapter = MyAdapter()
+
+    private val layoutManager by lazy {
+        LinearLayoutManager(this)
     }
 
     private val prNotification = permissionSpecNotification.requester()
@@ -52,8 +69,6 @@ class ActMain : AppCompatActivity() {
         applicationContext.pushRepo
     }
 
-    private val accountsAdapter = MyAdapter()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(views.root)
@@ -65,30 +80,30 @@ class ActMain : AppCompatActivity() {
         views.btnAlertTest.setOnClickListener {
             showAlertNotification("this is a test.")
         }
-        views.btnAddAccount.setOnClickListener {
-            addAccount()
+        views.btnManageAccount.setOnClickListener {
+            startActivity(intentActAccountList())
         }
         views.btnPushDistributor.setOnClickListener {
             launchAndShowError {
                 pushDistributor()
             }
         }
-        views.btnMessageList.setOnClickListener {
-            startActivity(intentActMessageList())
+
+        views.rvMessages.also {
+            it.adapter = listAdapter
+            it.layoutManager = layoutManager
         }
 
-        views.lvAccounts.adapter = accountsAdapter
-        views.lvAccounts.onItemClickListener = accountsAdapter
-
-        launchAndShowError {
+        lifecycleScope.launch {
             fcmHandler.fcmToken.collect {
                 showFcmToken(it)
             }
         }
 
         lifecycleScope.launch {
-            authRepo.accountListFlow().collect {
-                accountsAdapter.items = it
+            appDatabase.pushMessageAccess().listFlow().collect {
+                AdbLog.i("listFlow ${it.javaClass.simpleName}")
+                listAdapter.items = it
             }
         }
 
@@ -121,7 +136,11 @@ class ActMain : AppCompatActivity() {
         launchAndShowError {
             AdbLog.i("handleIntent: uri = $uri")
             val auth2Result = authRepo.authStep2(uri)
-            authRepo.updateAccount(auth2Result)
+            val a= authRepo.updateAccount(auth2Result)
+            showAlertNotification(
+                title = a.acct,
+                message = getString(R.string.approved),
+            )
             // アカウントを追加/更新したらappServerHashの取得をやりなおす
             when {
                 fcmHandler.noFcm && prefDevice.pushDistributor.isNullOrEmpty() -> {
@@ -142,29 +161,10 @@ class ActMain : AppCompatActivity() {
         views.tvStatus.text = "fcmToken=$token"
     }
 
-    private fun addAccount() = launchAndShowError {
-        dialogServerHost(
-            validator = {
-                when {
-                    it.isBlank() -> getString(R.string.hostname_empty)
-                    else -> null
-                }
-            }
-        ) { hostName, closeHost ->
-            launchAndShowError {
-                val uri = authRepo.authStep1(hostName)
-                val intent = Intent(Intent.ACTION_VIEW, uri)
-                startActivity(intent)
-                closeHost()
-            }
-        }
-    }
-
     private suspend fun pushDistributor() {
-        val context = this@ActMain
+        val context = this
         val prefDevice = prefDevice
         val lastDistributor = prefDevice.pushDistributor
-        val fcmToken = fcmHandler.fcmToken.value
 
         fun String.appendChecked(checked: Boolean) = when (checked) {
             true -> "$this ✅"
@@ -225,49 +225,119 @@ class ActMain : AppCompatActivity() {
         }
     }
 
-    private fun accountActions(a: SavedAccount) {
+    fun itemActions(pm: PushMessage) {
         launchAndShowError {
             actionsDialog {
-                action("アクセストークンの更新") {
-                    val uri = authRepo.authStep1(a.apiHost, forceUpdate = true)
-                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                action("詳細") {
+                    startActivity(intentActMessage(pm.messageDbId))
                 }
-                action("このリストから削除") {
-                    confirm(getString(R.string.account_remove_confirm_of, a.acct))
-                    pushRepo.updateSubscription(a, willRemoveSubscription = true)
-                    authRepo.removeAccount(a)
+                action("再解釈") {
+                    pushRepo.reDecode(pm)
+                }
+                action("エクスポート") {
+                    export(pm)
                 }
             }
         }
     }
 
-    private inner class MyViewHolder(parent: ViewGroup?) {
-        val views = LvAccountBinding.inflate(layoutInflater, parent, false)
-            .also { it.root.tag = this }
-
-        fun bind(item: SavedAccount?) {
-            item ?: return
-            views.tvText.text = item.toString()
+    /**
+     * エクスポート、というか端末のダウンロードフォルダに保存する
+     */
+    private suspend fun export(pm: PushMessage) {
+        runInProgress {
+            withContext(AppDispatchers.DEFAULT) {
+                val a = appDatabase.accountAccess().find(pm.loginAcct)
+                    ?: error("missing login account")
+                saveToDownload(
+                    displayName = "PushMessageDump-${pm.messageDbId}.txt",
+                ) { out ->
+                    PrintWriter(out).apply {
+                        println("receiverPrivateBytes=${a.pushKeyPrivate?.encodeBase64Url()}")
+                        println("receiverPublicBytes=${a.pushKeyPublic?.encodeBase64Url()}")
+                        println("senderPublicBytes=${a.pushServerKey?.encodeBase64Url()}")
+                        println("authSecret=${a.pushAuthSecret?.encodeBase64Url()}")
+                        println("headerJson=${pm.headerJson}")
+                        println("rawBody=${pm.rawBody?.encodeBase64Url()}")
+                    }.flush()
+                }
+            }
         }
     }
 
-    private inner class MyAdapter : BaseAdapter(), AdapterView.OnItemClickListener {
-        var items: List<SavedAccount> = emptyList()
+    @SuppressLint("SetTextI18n")
+    private inner class MyViewHolder(
+        parent: ViewGroup,
+        val views: LvMessageBinding = LvMessageBinding.inflate(layoutInflater, parent, false)
+    ) : RecyclerView.ViewHolder(views.root) {
+
+        var lastItem: PushMessage? = null
+
+        init {
+            views.root.setOnClickListener { lastItem?.let { itemActions(it) } }
+        }
+
+        fun bind(pm: PushMessage?) {
+            pm ?: return
+            lastItem = pm
+
+            val iconId = notificationTypeToIconId(pm.messageJson.string("notification_type"))
+            Glide.with(views.ivSmall)
+                .load(pm.iconSmall)
+                .error(iconId)
+                .into(views.ivSmall)
+
+            Glide.with(views.ivLarge)
+                .load(pm.iconLarge)
+                .into(views.ivLarge)
+
+            views.tvText.text = """
+                |loginAcct=${pm.loginAcct}
+                |timestamp=${pm.timestamp.formatTime()}
+                |timeDismiss=${pm.timeDismiss.takeIf { it > 0L }?.formatTime() ?: ""}
+                |messageLong=${pm.messageLong}
+            """.trimMargin()
+        }
+    }
+
+    private inner class MyAdapter : RecyclerView.Adapter<MyViewHolder>() {
+        var items: List<PushMessage> = emptyList()
             set(value) {
+                val oldScrollPos = layoutManager.findFirstVisibleItemPosition()
+                    .takeIf { it != RecyclerView.NO_POSITION }
+                val oldItems = field
                 field = value
-                notifyDataSetChanged()
+                DiffUtil.calculateDiff(
+                    object : DiffUtil.Callback() {
+                        override fun getOldListSize() = oldItems.size
+                        override fun getNewListSize() = value.size
+
+                        override fun areItemsTheSame(
+                            oldItemPosition: Int,
+                            newItemPosition: Int
+                        ) = oldItems[oldItemPosition] == value[newItemPosition]
+
+                        override fun areContentsTheSame(
+                            oldItemPosition: Int,
+                            newItemPosition: Int
+                        ) = false
+                    },
+                    true
+                ).dispatchUpdatesTo(this)
+                if (oldScrollPos == 0) {
+                    launchAndShowError {
+                        delay(50L)
+                        views.rvMessages.smoothScrollToPosition(0)
+                    }
+                }
             }
 
-        override fun getCount() = items.size
-        override fun getItem(position: Int) = items.elementAtOrNull(position)
-        override fun getItemId(position: Int) = items.elementAtOrNull(position)?.dbId ?: 0L
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup?) =
-            (convertView?.tag?.cast() ?: MyViewHolder(parent))
-                .also { it.bind(items.elementAtOrNull(position)) }
-                .views.root
+        override fun getItemCount() = items.size
 
-        override fun onItemClick(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-            getItem(position)?.let { accountActions(it) }
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = MyViewHolder(parent)
+
+        override fun onBindViewHolder(holder: MyViewHolder, position: Int) {
+            holder.bind(items.elementAtOrNull(position))
         }
     }
 }

@@ -10,6 +10,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import jp.juggler.pushreceiverapp.auth.AuthBase.Companion.JSON_ACCESS_TOKEN
 import jp.juggler.pushreceiverapp.auth.AuthRepo
 import jp.juggler.util.*
 import kotlinx.coroutines.flow.Flow
@@ -121,7 +122,7 @@ data class SavedAccount(
         get() = "$userName@$apDomain"
 
     val accessToken: String?
-        get() = tokenJson.string(AuthRepo.JSON_ACCESS_TOKEN)
+        get() = tokenJson.string(JSON_ACCESS_TOKEN)
 
     override fun toString() = acct
 

@@ -38,4 +38,12 @@
     <string name="select_push_delivery_service">Select push delivery service</string>
     <string name="firebase_cloud_messaging">Firebase Cloud Messaging(FCM)</string>
     <string name="none">none</string>
+    <string name="approved">Approved.</string>
+    <string name="presets">Presets</string>
+    <string name="push_subscription_keep_using">現在の購読をそのまま利用可能です</string>
+    <string name="push_subscription_off_unread_notification">現在の購読を利用できますが、既読通知はオフにしました。</string>
+    <string name="push_subscription_delete_current">現在の購読がありましたが、指示により削除しました。</string>
+    <string name="push_subscription_app_server_hash_missing_but_ok">プッシュ配送サービスをアプリサーバに登録できていませんが、購読が不要な状況なので問題ありません。</string>
+    <string name="push_subscription_app_server_hash_missing_error">プッシュ配送サービスをアプリサーバに登録できていません。プッシュ配送サービスを再度選択すると改善する場合があります。</string>
+    <string name="incorrect_chars">incorrect chars \"%1$s\"</string>
 </resources>

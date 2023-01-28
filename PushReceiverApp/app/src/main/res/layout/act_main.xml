@@ -23,7 +23,7 @@
             android:layout_height="40dp"
             android:contentDescription="@string/alert_test"
             android:src="@drawable/outline_add_alert_24"
-            app:tint="@color/colorText"
+            app:tint="?attr/colorText"
             android:layout_marginEnd="2dp"
             android:id="@+id/btnAlertTest"/>
 
@@ -32,9 +32,9 @@
             android:layout_height="40dp"
             android:layout_marginEnd="2dp"
             android:contentDescription="@string/add_account"
-            android:src="@drawable/outline_person_add_24"
-            app:tint="@color/colorText"
-            android:id="@+id/btnAddAccount"/>
+            android:src="@drawable/outline_manage_accounts_24"
+            app:tint="?attr/colorText"
+            android:id="@+id/btnManageAccount"/>
 
         <ImageButton
             android:layout_width="40dp"
@@ -42,16 +42,18 @@
             android:layout_marginEnd="2dp"
             android:contentDescription="@string/push_distributor"
             android:src="@drawable/outline_delivery_dining_24"
-            app:tint="@color/colorText"
+            app:tint="?attr/colorText"
             android:id="@+id/btnPushDistributor"/>
 
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="2dp"
-            android:text="@string/message_history"
-            android:id="@+id/btnMessageList"/>
     </com.google.android.flexbox.FlexboxLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rvMessages"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fadeScrollbars="false"
+        android:scrollbarStyle="outsideOverlay" />
 
     <TextView
         android:layout_width="match_parent"
@@ -61,12 +63,5 @@
         android:paddingVertical="4dp"
         android:minHeight="40dp"
         android:gravity="center_vertical|start"
-        />
-
-    <ListView
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:id="@+id/lvAccounts"
         />
 </LinearLayout>

@@ -13,11 +13,16 @@
         android:elevation="4dp"
         app:navigationIcon="?attr/homeAsUpIndicator" />
 
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvMessages"
+    <Button
+        android:id="@+id/btnAddAccount"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:text="@string/add_account" />
+
+    <ListView
+        android:id="@+id/lvAccounts"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fadeScrollbars="false"
-        android:scrollbarStyle="outsideOverlay" />
+        android:layout_weight="1" />
 </LinearLayout>

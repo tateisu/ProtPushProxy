@@ -8,7 +8,10 @@ import jp.juggler.util.toPostRequestBuilder
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
-class AppServerApi(
+/**
+ * アプリサーバのAPI
+ */
+class ApiAppServer(
     private val okHttp: OkHttpClient,
     private val appServerPrefix: String = "https://mastodon-msg.juggler.jp/api/v2",
 ) {

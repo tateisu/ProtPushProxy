@@ -1,16 +1,17 @@
 package jp.juggler.pushreceiverapp.dialog
 
-import android.app.Activity
 import android.app.Dialog
 import android.view.inputmethod.EditorInfo
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.addTextChangedListener
 import jp.juggler.pushreceiverapp.databinding.DlgServerHostBinding
+import jp.juggler.pushreceiverapp.notification.launchAndShowError
 import jp.juggler.util.dismissSafe
 import jp.juggler.util.isEnabledAlpha
 import jp.juggler.util.vg
 
 class DlgServerHost(
-    activity: Activity,
+    private val activity: AppCompatActivity,
     private val validator: (String) -> String?,
     private val onOk: (String, closer: () -> Unit) -> Unit
 ) {
@@ -39,6 +40,7 @@ class DlgServerHost(
                 else -> false
             }
         }
+        views.btnPresets.setOnClickListener { presetsDialog() }
 
         validatedText()
 
@@ -64,9 +66,24 @@ class DlgServerHost(
             else -> null
         }
     }
+
+    private fun presetsDialog() = activity.launchAndShowError {
+        activity.actionsDialog {
+            arrayOf(
+                "mastodon.juggler.jp",
+                "drdr.club",
+                "misskey.m544.net",
+            ).forEach {
+                action(it) {
+                    views.etHost.setText(it)
+                    validatedText()
+                }
+            }
+        }
+    }
 }
 
-fun Activity.dialogServerHost(
+fun AppCompatActivity.dialogServerHost(
     validator: (String) -> String?,
     onOk: (String, onComplete: () -> Unit) -> Unit
 ) {

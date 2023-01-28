@@ -107,7 +107,7 @@ fun main(args: Array<String>) {
 
     config.parseArgs(args)
 
-    config.pidFile.notBlank()?.let{
+    config.pidFile.notBlank()?.let {
         File(it).writeText(pid.toString())
     }
 
@@ -206,7 +206,8 @@ fun Application.module() {
                     error("upUrl and fcmToken must specify one. reqJson=$reqJson")
                 }
 
-                val acctHashList = reqJson.jsonArray("acctHashList")?.stringList()
+                val acctHashList = reqJson.jsonArray("acctHashList")
+                    ?.stringList()
                 if (acctHashList.isNullOrEmpty()) {
                     error("acctHashList is null or empty")
                 }

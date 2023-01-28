@@ -6,9 +6,16 @@ import androidx.startup.Initializer
 import java.util.*
 
 class PrefDevice(context: Context) {
+
     companion object {
         // この設定ファイルはバックアップ対象から除外するべき
         const val SHARED_PREFERENCE_NAME = "prefDevice"
+
+        // 認証開始時の状況を覚える
+        private const val PREF_AUTH_SERVER_TYPE = "authServerType"
+        private const val PREF_AUTH_API_HOST    = "authApiHost"
+        private const val PREF_AUTH_SESSION_ID  = "authSessionId"
+
 
         private const val PREF_FCM_TOKEN = "fcmToken"
         private const val PREF_FCM_TOKEN_EXPIRED = "fcmTokenExpired"
@@ -23,6 +30,17 @@ class PrefDevice(context: Context) {
     }
 
     private val sp = context.getSharedPreferences(SHARED_PREFERENCE_NAME, Context.MODE_PRIVATE)
+
+    fun saveAuthStart(apiHost: String, sessionId: String) {
+        sp.edit().apply{
+            putString(PREF_AUTH_API_HOST,apiHost)
+            putString(PREF_AUTH_SESSION_ID,sessionId)
+        }.apply()
+    }
+
+    val authServerType :String? get() = sp.getString(PREF_AUTH_SERVER_TYPE,null)
+    val authApiHost :String? get() = sp.getString(PREF_AUTH_API_HOST,null)
+    val authSessionId :String? get() = sp.getString(PREF_AUTH_SESSION_ID,null)
 
     val installIdv2: String
         get() = synchronized(this) {

@@ -42,7 +42,7 @@ fun ByteArray.decodeUTF8() = toString(StandardCharsets.UTF_8)
 fun ByteArray.encodeBase64UrlSafe(): String =
     Base64.encodeBase64URLSafeString(this)
 
-fun String.decodeBase64UrlSafe(): ByteArray =
+fun String.decodeBase64(): ByteArray =
     Base64.decodeBase64(this)
 
 fun ByteArray.digestSHA256(): ByteArray =

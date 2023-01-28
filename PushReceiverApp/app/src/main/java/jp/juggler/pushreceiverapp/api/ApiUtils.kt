@@ -18,6 +18,10 @@ import okhttp3.internal.closeQuietly
 import ru.gildor.coroutines.okhttp.await
 import java.io.IOException
 
+const val JSON_SERVER_TYPE = "<>serverType"
+const val SERVER_MISSKEY = "misskey"
+const val SERVER_MASTODON = "mastodon"
+
 val DEFAULT_JSON_ERROR_PARSER =
     { json: JsonObject -> json["error"]?.toString() }
 

@@ -186,6 +186,7 @@ class WebPushCrypt(
     }
 
     // Simplified HKDF, returning keys up to 32 bytes long
+    // HKDF from RFC 5869: `HKDF-Expand(HKDF-Extract(salt, ikm), info, length)`.
     fun hkdf(
         salt: ByteArray,
         ikm: ByteArray,
@@ -206,7 +207,7 @@ class WebPushCrypt(
         }
         return digest.copyOfRange(0, length)
     }
-
+    
     /**
      *
      */
@@ -280,28 +281,26 @@ class WebPushCrypt(
             GCMParameterSpec(tagBits, nonce),
         )
         return cip.doFinal(body)
-//        val blockSize=cip.blockSize
-//        val bao = ByteArrayOutputStream()
-//        val tmp = ByteArray(1024)
-//        val end = body.size
-//        var i=0
-//        while(i<end) {
-//            val step = min(blockSize, end - i)
-//            AdbLog.i("decipher step=$step pos=$i/$end")
-//            val delta = cip.update(body, i, step, tmp, 0)
-//            AdbLog.i("delta=$delta")
-//            if (delta > 0){
-//                bao.write(tmp, 0, delta)
-//
-//            }
-//            i+=step
-//        }
-//        run{
-//            val delta = cip.doFinal(body,end,0,tmp,0)
-//            AdbLog.i("final: delta=$delta")
-//            if (delta > 0) bao.write(tmp, 0, delta)
-//        }
-//        return bao.toByteArray()
+    }
+
+    fun decipherAes128Gcm(
+        contentEncryptionKey: ByteArray,
+        nonce: ByteArray,
+        body: ByteArray,
+    ): ByteArray {
+        // https://zditect.com/code/js-and-java-docking-aes128gcm-encryption-and-decryption-algorithm.html
+
+        val tagBits = 128 // Must be one of {128, 120, 112, 104, 96}
+        val cip = Cipher.getInstance(
+            "AES/GCM/PKCS5Padding",
+            provider
+        )
+        cip.init(
+            Cipher.DECRYPT_MODE,
+            SecretKeySpec(contentEncryptionKey, "AES"),
+            GCMParameterSpec(tagBits, nonce),
+        )
+        return cip.doFinal(body)
     }
 
     fun removePadding(src: ByteArray): ByteArray = src.run {
@@ -347,18 +346,18 @@ class WebPushCrypt(
             serverKey = senderPublic
         )
 
-        val prk = hkdf(
-            salt = authSecret,
-            ikm = sharedKeyBytes,
-            info = "Content-Encoding: auth\u0000".encodeUTF8(),
-            length = sha256Length
-        )
-
         // Derive the Content Encryption Key
         val contentEncryptionKeyInfo = createInfo(
             type = "aesgcm",
             clientPublicKey = receiverPublicBytes,
             serverPublicKey = senderPublicBytes,
+        )
+
+        val prk = hkdf(
+            salt = authSecret,
+            ikm = sharedKeyBytes,
+            info = "Content-Encoding: auth\u0000".encodeUTF8(),
+            length = sha256Length
         )
 
         val contentEncryptionKey = hkdf(
@@ -390,4 +389,231 @@ class WebPushCrypt(
 
         return removePadding(result)
     }
+
+    //////////////////////////////////////////////
+
+
+    @Suppress("ArrayInDataClass")
+    data class ByteRange(
+        val ba:ByteArray,
+        val start:Int,
+        val end:Int,
+    ) {
+        val size get()= end-start
+    }
+
+    class Aes128gcmPayload(
+        val salt:ByteArray,
+        val recordSize:Int,
+        val keyId:ByteArray,
+        var cipherText:ByteArray
+    )
+
+    /**
+     * Content-Encoding: aes128gcm
+     * のヘッダを読む
+     * https://asnokaze.hatenablog.com/entry/20170202/1486046514
+     */
+    fun parseAes128gcmPayload(
+        payload:ByteArray,
+    ) :Aes128gcmPayload {
+        val end = payload.size
+        var pos = 0
+        fun readBytes(size: Int): ByteArray {
+            if (pos + size > end) error("unexpected end.")
+            val rv = payload.copyOfRange(pos,pos+size)
+            pos += size
+            return rv
+        }
+        fun readUInt8(): Int {
+            if (pos >= end) error("unexpected end.")
+            val b = payload[pos++]
+            return b.toInt().and(255)
+        }
+        fun readUInt32(): Int {
+            if (pos + 4 > end) error("unexpected end.")
+            // Big Endian
+            val b0 = payload[pos].toInt().and(255).shl(24)
+            val b1 = payload[pos + 1].toInt().and(255).shl(16)
+            val b2 = payload[pos + 2].toInt().and(255).shl(8)
+            val b3 = payload[pos + 3].toInt().and(255)
+            pos += 4
+            return b0.or(b1).or(b2).or(b3)
+        }
+
+        val salt = readBytes(16)
+        val recordSize = readUInt32()
+        val keyIdLen = readUInt8()
+        val keyId = readBytes(keyIdLen)
+        return Aes128gcmPayload(
+            salt = salt,
+            recordSize = recordSize,
+            keyId = keyId,
+            cipherText = readBytes(end-pos)
+        )
+    }
+
+
+
+    // The "aes128gcm" IKM info string is "WebPush: info\0", followed by the
+// receiver and sender public keys.
+    val ECE_WEBPUSH_AES128GCM_IKM_INFO_PREFIX = "WebPush: info\u0000".encodeUTF8()
+    val ECE_WEBPUSH_AES128GCM_IKM_INFO_LENGTH = 144 // 64*2 + prefix(14)
+    val ECE_WEBPUSH_IKM_LENGTH = 32
+    fun createInfoAes128Gcm(
+        prefix:ByteArray,
+        receiverPublicKey:ByteArray,
+        senderPublicKey:ByteArray,
+    ) = ByteArrayOutputStream(ECE_WEBPUSH_AES128GCM_IKM_INFO_LENGTH).apply {
+        // Copy the prefix. 14 bytes
+        write(prefix)
+
+        // Copy the receiver public key. 65 bytes.
+        write(receiverPublicKey)
+//        const EC_GROUP* recvGrp = EC_KEY_get0_group(recvKey);
+//        const EC_POINT* recvPubKeyPt = EC_KEY_get0_public_key(recvKey);
+//        EC_POINT_point2oct(recvGrp, recvPubKeyPt, POINT_CONVERSION_UNCOMPRESSED,
+//            &info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH, NULL);
+
+        // Copy the sender public key.  65 bytes.
+        write(senderPublicKey)
+//        const EC_GROUP* senderGrp = EC_KEY_get0_group(senderKey);
+//        const EC_POINT* senderPubKeyPt = EC_KEY_get0_public_key(senderKey);
+//        EC_POINT_point2oct(senderGrp, senderPubKeyPt, POINT_CONVERSION_UNCOMPRESSED,
+//            &info[offset], ECE_WEBPUSH_PUBLIC_KEY_LENGTH, NULL);
+
+    }.toByteArray()
+
+    val ECE_AES128GCM_KEY_INFO = "Content-Encoding: aes128gcm\u0000".encodeUTF8()
+    val ECE_AES128GCM_NONCE_INFO = "Content-Encoding: nonce\u0000".encodeUTF8()
+    val ECE_AES_KEY_LENGTH =16
+    val ECE_NONCE_LENGTH =12
+    val ECE_TAG_LENGTH = 16
+
+
+//    /**
+//     * ヘッダ
+//     */
+//    fun aes128gcmDecrypt(
+//        receiverPrivate: PrivateKey,
+//        senderPublic:ECPublicKey,
+//        receiverPrivateKeyBytes:ByteArray,
+//        receiverPublicKeyBytes:ByteArray,
+//        senderPublicKeyBytes:ByteArray,
+//        authSecret:ByteArray,
+//        salt:ByteArray,
+//        recordSize:Int,
+//        padSize:Int,
+//        ciphertext:ByteRange,
+//        unpad:Any,
+//    ):ByteArray{
+//        if( authSecret.size != 0) error("incorrect authSecret.size")
+//        if( salt.size != 16) error("incorrect salt.size")
+//        if( ciphertext.size ==0) error("ciphertext salt.size")
+//
+//        // ※ aes128gcm は trailerの処理は必要ない
+//
+//        val sharedSecretBytes = sharedKeyBytes(receiverPrivate ,senderPublic )
+//
+//        // The new "aes128gcm" scheme includes the sender and receiver public keys in
+//        // the info string when deriving the Web Push IKM.
+//        // For decryption, the local static private key is the receiver key, and the
+//        // remote ephemeral public key is the sender key.
+//        val ikmInfo =  ece_webpush_aes128gcm_generate_info(
+//            ECE_WEBPUSH_AES128GCM_IKM_INFO_PREFIX,
+//            receiverPublicKeyBytes,
+//            senderPublicKeyBytes
+//        )
+//
+//        val  prk = hkdf(
+//            salt = authSecret,
+//            ikm = sharedSecretBytes,
+//            info = ikmInfo,
+//            length = 32
+//        )
+//
+//        val contentEncryptionKey = hkdf(
+//            salt = salt,
+//            ikm=prk,
+//            info =  ECE_AES128GCM_KEY_INFO,
+//            length = ECE_AES_KEY_LENGTH
+//        )
+//        val nonce = hkdf(
+//            salt = salt,
+//            ikm = prk,
+//            info = ECE_AES128GCM_NONCE_INFO,
+//            length =ECE_NONCE_LENGTH
+//        )
+//
+//        val rs = recordSize
+//
+//
+//        // The offset at which to start reading the ciphertext.
+//        var ciphertextStart = 0;
+//
+//        // The offset at which to start writing the plaintext.
+//        var plaintextStart = 0;
+//        val ciphertextLen = ciphertext.size
+//        var counter = 0
+//        while( ciphertextStart < ciphertext.end) {
+//            run {
+//                var ciphertextEnd = if (rs > ciphertextLen - ciphertextStart) {
+//                    // This check is equivalent to `ciphertextStart + rs > ciphertextLen`;
+//                    // it's written this way to avoid an integer overflow.
+//                    ciphertextLen;
+//                } else {
+//                    ciphertextStart + rs;
+//                }
+//                assert(ciphertextEnd > ciphertextStart);
+//
+//                // The full length of the encrypted record.
+//                var recordLen = ciphertextEnd -ciphertextStart;
+//                if (recordLen <= ECE_TAG_LENGTH) {
+//                    error("short block")
+//                }
+//
+//                // Generate the IV for this record using the nonce.
+//                uint8_t iv [ECE_NONCE_LENGTH];
+//                ece_generate_iv(nonce, counter, iv);
+//
+//                // Decrypt the record.
+//                ece_decrypt_record(
+//                    contentEncryptionKey,
+//                    iv,
+//                    & ciphertext [ciphertextStart],
+//                    recordLen,
+//                    &plaintext[plaintextStart]
+//                )
+//
+//                // `unpad` sets `blockLen` to the actual plaintext block length, without
+//                // the padding delimiter and padding.
+//                val lastRecord = ciphertextEnd >= ciphertextLen;
+//                val blockLen = recordLen -ECE_TAG_LENGTH;
+//                if (blockLen < padSize) {
+//                    error("DECRYPT_PADDING")
+//                }
+//                err = unpad(& plaintext [plaintextStart], lastRecord, &blockLen);
+//                if (err) {
+//                    goto end;
+//                }
+//                ciphertextStart = ciphertextEnd;
+//                plaintextStart += blockLen;
+//            }
+//            ++counter
+//        }
+//
+//                }
+//
+//                    // Finally, set the actual plaintext length.
+//                    *plaintextLen = plaintextStart;
+//
+//                    end:
+//                    EVP_CIPHER_CTX_free(ctx);
+//                    return err;
+//                }
+//
+//
+//    }
+
+
 }

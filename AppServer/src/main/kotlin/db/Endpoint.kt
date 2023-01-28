@@ -25,7 +25,7 @@ data class Endpoint(
 ) {
     object Meta : Table("endpoints") {
         val acctHash = text("acct_hash")
-        val hashId = text("hash_id").index()
+        val hashId = text("hash_id")
         val upUrl = text("up_url").nullable()
         val fcmToken = text("fcm_token").nullable()
 
@@ -117,4 +117,12 @@ data class Endpoint(
             Meta.deleteWhere { hashId.inList(oldIds) }
         }
     }
+
+    override fun equals(other: Any?) = when {
+        this === other -> true
+        other !is Endpoint -> false
+        else -> this.hashId == other.hashId
+    }
+
+    override fun hashCode() = hashId.hashCode()
 }
