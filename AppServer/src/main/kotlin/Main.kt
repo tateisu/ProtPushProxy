@@ -36,11 +36,14 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
+import util.Base128.encodeBase128
+import util.BrotliUtils
+import util.BrotliUtils.compressBrotli
 import util.buildJsonObject
+import util.decodeBase64
 import util.decodeJsonObject
 import util.decodeUTF8
 import util.e
-import util.encodeBase64UrlSafe
 import util.encodeUTF8
 import util.i
 import util.jsonObjectOf
@@ -51,20 +54,12 @@ import java.io.File
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
-val ignoreHeaders = setOf(
-    "Accept-Encoding",
-    "Connection",
-    "Content-Length",
-    "Date",
-    "Host",
-    "User-Agent",
-    "X-Forwarded-For",
-    "X-Forwarded-Proto",
-    "X-Real-IP",
-    "Content-Type",
-    "Ttl",
-    "Urgency",
-)
+// 暗号のデコードに必要なヘッダ。小文字化
+val encryptionHeaders = arrayOf(
+    "Content-Encoding",
+    "Crypto-Key",
+    "Encryption",
+).map { it.lowercase() }.toSet()
 
 private val log = LoggerFactory.getLogger("Main")
 
@@ -76,7 +71,7 @@ val tables = arrayOf(Endpoint.Meta, EndpointUsage.Meta)
 val client = HttpClient(CIO) {
     install(Logging) {
         logger = Logger.DEFAULT
-        level = LogLevel.HEADERS
+        level = LogLevel.INFO
     }
     install(HttpTimeout) {
         requestTimeoutMillis = TimeUnit.SECONDS.toMillis(20)
@@ -104,6 +99,8 @@ private fun createStatementsX(vararg tables: Table): List<String> {
 fun main(args: Array<String>) {
     val pid = ProcessHandle.current().pid()
     log.i("main start! pid=$pid, pwd=${File(".").canonicalFile}")
+
+    BrotliUtils.requireInitialized()
 
     config.parseArgs(args)
 
@@ -242,8 +239,9 @@ fun Application.module() {
 
                 val headerJson = buildJsonObject {
                     for (e in call.request.headers.entries()) {
-                        if (ignoreHeaders.contains(e.key)) continue
-                        e.value.firstOrNull()?.let { put(e.key, it) }
+                        if (encryptionHeaders.contains(e.key.lowercase())) {
+                            e.value.firstOrNull()?.let { put(e.key, it) }
+                        }
                     }
                 }
 
@@ -266,19 +264,31 @@ fun Application.module() {
                             headerJson.toString().encodeUTF8().writeSection()
                             body.writeSection()
                         }.toByteArray()
-                        log.i("send ${newBody.size}bytes to $upUrl")
-                        sendUnifiedPush.send(newBody, upUrl)
+                        val compressed = newBody.compressBrotli()
+                        log.i("send ${compressed.size}/${newBody.size} bytes to $upUrl")
+                        sendUnifiedPush.send(compressed, upUrl)
                         EndpointUsage.AccessImpl().updateUsage1(appServerHash)
                         jsonObjectOf("result" to "sent to UnifiedPush server.")
                     }
 
                     fcmToken != null -> withContext(Dispatchers.IO) {
                         sendFcm.send(fcmToken) {
-                            var sum = 0
-                            putData("ah", endpoint.acctHash.also { sum += it.length })
-                            putData("hj", headerJson.toString().also { sum += it.length })
-                            putData("b", body.encodeBase64UrlSafe().also { sum += it.length })
-                            log.i("send ${sum * 2}bytes to fcm")
+                            val acctHashEncoded = endpoint.acctHash.decodeBase64().compressBrotli().encodeBase128()
+                            val headerJsonEncoded =
+                                headerJson.toString().encodeUTF8().compressBrotli().encodeBase128()
+                            val bodyEncoded = body.compressBrotli().encodeBase128()
+                            putData("a", acctHashEncoded)
+                            putData("h", headerJsonEncoded)
+                            putData("b", bodyEncoded)
+                            log.i(
+                                "acct.length=${
+                                    acctHashEncoded.length
+                                }, header.length=${
+                                    headerJsonEncoded.length
+                                }, body.length=${
+                                    bodyEncoded.length
+                                } fcmToken=$fcmToken"
+                            )
                         }
                         EndpointUsage.AccessImpl().updateUsage1(appServerHash)
                         jsonObjectOf("result" to "sent to FCM. messageId=$it")

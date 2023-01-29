@@ -13,6 +13,7 @@ import jp.juggler.util.decodeBase64
 import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
 import jp.juggler.util.encodeUTF8
+import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import java.security.Provider
 import java.security.SecureRandom
@@ -167,8 +168,21 @@ class PushMisskey(
         when (val eventType = json.string("type")) {
             "notification" -> {
                 val notificationType = body?.string("type")
-                pm.messageShort = "$notificationType user=${user?.string("username")}"
-                pm.messageLong = "$notificationType user=${user?.string("username")}"
+
+                pm.messageShort =arrayOf<String?>(
+                    user?.string("username"),
+                    notificationType,
+                ).mapNotNull { it.notBlank() }.joinToString(", ")
+                pm.messageLong = arrayOf<String?>(
+                    user?.string("username"),
+                    notificationType,
+                    body?.string("text")?.takeIf {
+                        when (notificationType) {
+                            "mention", "quote" -> true
+                            else -> false
+                        }
+                    }
+                ).mapNotNull { it.notBlank() }.joinToString(", ")
             }
             else -> {
                 pm.messageShort = "謎のイベント $eventType user=${user?.string("username")}"

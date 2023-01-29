@@ -50,3 +50,9 @@ fun ByteArray.digestSHA256(): ByteArray =
 
 fun <T : CharSequence> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
 fun <T : CharSequence> T?.notBlank() = if (this.isNullOrBlank()) null else this
+
+val reEscapeRequired = """[^\w]""".toRegex()
+fun String.escape() =
+    reEscapeRequired.replace(this) {
+        "\\u%04x".format(it.value.first().code)
+    }

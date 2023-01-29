@@ -35,6 +35,7 @@ import jp.juggler.util.AppDispatchers
 import jp.juggler.util.EmptyScope
 import jp.juggler.util.encodeBase64Url
 import jp.juggler.util.formatTime
+import jp.juggler.util.notBlank
 import jp.juggler.util.saveToDownload
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -253,6 +254,7 @@ class ActMain : AppCompatActivity() {
                     displayName = "PushMessageDump-${pm.messageDbId}.txt",
                 ) { out ->
                     PrintWriter(out).apply {
+                        println("messageJson=${pm.messageJson.toString(1,sort = true)}")
                         println("receiverPrivateBytes=${a.pushKeyPrivate?.encodeBase64Url()}")
                         println("receiverPublicBytes=${a.pushKeyPublic?.encodeBase64Url()}")
                         println("senderPublicBytes=${a.pushServerKey?.encodeBase64Url()}")
@@ -291,12 +293,12 @@ class ActMain : AppCompatActivity() {
                 .load(pm.iconLarge)
                 .into(views.ivLarge)
 
-            views.tvText.text = """
-                |loginAcct=${pm.loginAcct}
-                |timestamp=${pm.timestamp.formatTime()}
-                |timeDismiss=${pm.timeDismiss.takeIf { it > 0L }?.formatTime() ?: ""}
-                |messageLong=${pm.messageLong}
-            """.trimMargin()
+            views.tvText.text = arrayOf<String?>(
+                "to ${pm.loginAcct}",
+                "when ${pm.timestamp.formatTime()}",
+                pm.timeDismiss.takeIf { it > 0L }?.let{"既読 ${it.formatTime()}"},
+                pm.messageLong
+            ).mapNotNull { it.notBlank() }.joinToString("\n")
         }
     }
 

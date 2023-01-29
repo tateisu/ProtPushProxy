@@ -17,11 +17,13 @@ import jp.juggler.pushreceiverapp.notification.showSnsNotification
 import jp.juggler.pushreceiverapp.push.PushWorker.Companion.launchUpWorker
 import jp.juggler.pushreceiverapp.push.crypt.Aes128GcmDecoder
 import jp.juggler.pushreceiverapp.push.crypt.AesGcmDecoder
-import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
 import jp.juggler.pushreceiverapp.push.crypt.byteRangeReader
+import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
 import jp.juggler.pushreceiverapp.push.crypt.parseSemicolon
 import jp.juggler.pushreceiverapp.push.crypt.toByteRange
 import jp.juggler.util.AdbLog
+import jp.juggler.util.Base128.decodeBase128
+import jp.juggler.util.Base128.decompressBrotli
 import jp.juggler.util.JsonObject
 import jp.juggler.util.decodeBase64
 import jp.juggler.util.decodeJsonObject
@@ -30,6 +32,7 @@ import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
 import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notEmpty
+import jp.juggler.util.withCaption
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -351,9 +354,13 @@ class PushRepo(
 
     suspend fun handleFcmMessage(data: Map<String, String>) {
         val pm = saveRawMessage(
-            acctHash = data["ah"].notEmpty() ?: error("missing ah"),
-            headerJson = data["hj"]?.decodeJsonObject() ?: error("missing hj"),
-            body = data["b"]?.decodeBase64() ?: error("missing b"),
+            acctHash = data["a"]?.decodeBase128()?.decompressBrotli()?.encodeBase64Url()
+                ?: error("missing a"),
+            headerJson = data["h"]?.decodeBase128()?.decompressBrotli()?.decodeUTF8()
+                ?.decodeJsonObject()
+                ?: error("missing h"),
+            body = data["b"]?.decodeBase128()?.decompressBrotli()
+                ?: error("missing b"),
             cameFrom = CAME_FROM_FCM
         )
         decodeMessageContent(pm)
@@ -465,8 +472,7 @@ class PushRepo(
             ?: error("missing raw data.")
 
         val headerJson = pm.headerJson
-        AdbLog.i("headerJson.keys=${headerJson.keys.joinToString(",")}")
-
+        // AdbLog.i("headerJson.keys=${headerJson.keys.joinToString(",")}")
         //        headerJson={
         //            "Digest":"SHA-256=nnn",
         //            "Content-Encoding":"aesgcm",
@@ -475,42 +481,49 @@ class PushRepo(
         //            "Authorization":"WebPush XXX.XXX.XXX"
         //        }
 
-        if (headerJson.string("Content-Encoding")?.trim() == "aes128gcm") {
-            Aes128GcmDecoder(body.byteRangeReader(), provider).run {
-                deriveKeyWebPush(
-                    // receiver private key in X509 format
-                    receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
-                    // receiver public key in 65bytes X9.62 uncompressed format
-                    receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
-                    // auth secrets created at subscription
-                    authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
-                )
-                decode()
-            }
-        } else {
-            // Crypt-Key から dh と p256ecdsa を見る
-            val cryptKeys = headerJson.string("Crypto-Key")
-                ?.parseSemicolon() ?: error("missing Crypto-Key")
+        try {
+            if (headerJson.string("Content-Encoding")?.trim() == "aes128gcm") {
+                Aes128GcmDecoder(body.byteRangeReader(), provider).run {
+                    deriveKeyWebPush(
+                        // receiver private key in X509 format
+                        receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
+                        // receiver public key in 65bytes X9.62 uncompressed format
+                        receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
+                        // auth secrets created at subscription
+                        authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
+                    )
+                    decode()
+                }
+            } else {
+                // Crypt-Key から dh と p256ecdsa を見る
+                val cryptKeys = headerJson.string("Crypto-Key")
+                    ?.parseSemicolon() ?: error("missing Crypto-Key")
 
-            AesGcmDecoder(
-                receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
-                receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
-                senderPublicBytes = cryptKeys["dh"]?.decodeBase64()
-                    ?: a.pushServerKey ?: error("missing pushServerKey"),
-                authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
-                saltBytes = headerJson.string("Encryption")?.parseSemicolon()
-                    ?.get("salt")?.decodeBase64()
-                    ?: error("missing Encryption.salt"),
-                provider = provider
-            ).run {
-                deriveKey()
-                decode(body.toByteRange())
+                AesGcmDecoder(
+                    receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
+                    receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
+                    senderPublicBytes = cryptKeys["dh"]?.decodeBase64()
+                        ?: a.pushServerKey ?: error("missing pushServerKey"),
+                    authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
+                    saltBytes = headerJson.string("Encryption")?.parseSemicolon()
+                        ?.get("salt")?.decodeBase64()
+                        ?: error("missing Encryption.salt"),
+                    provider = provider
+                ).run {
+                    deriveKey()
+                    decode(body.toByteRange())
+                }
             }
-        }.decodeUTF8().decodeJsonObject().let {
+        } catch (ex: Throwable) {
+            // クライアント側の鍵が異なる等でデコードできない場合は品シユツする
+            AdbLog.e(ex.withCaption("message decipher failed."))
+            null
+        }?.decodeUTF8()?.decodeJsonObject()?.let {
             pm.messageJson = it
             pushBase(a).formatPushMessage(a, pm)
             pushMessageAccess.save(pm)
         }
+
     }
 
     /**

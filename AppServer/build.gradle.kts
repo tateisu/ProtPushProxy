@@ -20,6 +20,7 @@ dependencies {
 
     val exposedVersion = "0.41.1"
     val ktorVersion = "2.2.2"
+    val brotliVersion = "1.9.0"
 
     implementation("ch.qos.logback:logback-classic:1.4.5")
     implementation("com.google.firebase:firebase-admin:8.2.0")
@@ -38,6 +39,9 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1")
     implementation("org.postgresql:postgresql:42.5.1")
     implementation("com.impossibl.pgjdbc-ng:pgjdbc-ng:0.8.9")
+
+    implementation("com.aayushatharva.brotli4j:brotli4j:$brotliVersion")
+    implementation("com.aayushatharva.brotli4j:native-linux-x86_64:$brotliVersion")
 }
 
 tasks.test {

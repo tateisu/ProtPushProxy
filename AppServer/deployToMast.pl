@@ -35,7 +35,7 @@ sub chdirOrThrow($){
     chdir($dir) or die "chdir failed. $dir $!";
 }
 
-cmd qq(./gradlew shadowJar);
+cmd qq(./gradlew shadowJar --stacktrace );
 
 my $jarSrc = `ls -1t build/libs/*-all.jar|head -n 1`;
 $jarSrc =~ s/\s+\z//;

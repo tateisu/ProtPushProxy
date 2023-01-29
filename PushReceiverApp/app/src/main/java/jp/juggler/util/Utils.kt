@@ -153,7 +153,7 @@ fun String.encodeUTF8() = toByteArray(StandardCharsets.UTF_8)
 fun ByteArray.decodeUTF8() = toString(StandardCharsets.UTF_8)
 
 @OptIn(ExperimentalCoroutinesApi::class)
-suspend fun Context.loadIcon(url: String?, size: Int? = null): Bitmap? = try {
+suspend fun Context.loadIcon(url: String?, size: Int): Bitmap? = try {
     suspendCancellableCoroutine { cont ->
         @Suppress("ThrowableNotThrown")
         val target = object : CustomTarget<Bitmap>() {
