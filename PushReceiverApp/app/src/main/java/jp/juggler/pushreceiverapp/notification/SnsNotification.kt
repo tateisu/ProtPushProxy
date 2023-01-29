@@ -41,7 +41,7 @@ suspend fun Context.showSnsNotification(
         iconSmall?.notEmpty()
             ?.let { loadIcon(pm.iconSmall, (24f * density + 0.5f).toInt()) }
             ?.let { return IconCompat.createWithBitmap(it) }
-        val iconId = notificationTypeToIconId(messageJson.string("notification_type"))
+        val iconId = pm.notificationIconId()
         return IconCompat.createWithResource(context, iconId)
     }
 

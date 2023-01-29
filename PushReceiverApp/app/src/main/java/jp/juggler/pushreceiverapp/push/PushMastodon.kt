@@ -5,6 +5,9 @@ import jp.juggler.pushreceiverapp.api.ApiMastodon
 import jp.juggler.pushreceiverapp.db.PushMessage
 import jp.juggler.pushreceiverapp.db.SavedAccount
 import jp.juggler.pushreceiverapp.push.PushRepo.Companion.followDomain
+import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
+import jp.juggler.pushreceiverapp.push.crypt.encodeP256Dh
+import jp.juggler.pushreceiverapp.push.crypt.generateKeyPair
 import jp.juggler.util.decodeBase64
 import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
@@ -12,26 +15,28 @@ import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import jp.juggler.util.parseTime
+import java.security.Provider
 import java.security.SecureRandom
 import java.security.interfaces.ECPublicKey
 
 class PushMastodon(
-    private val api:ApiMastodon,
-    private val crypt:WebPushCrypt,
+    private val api: ApiMastodon,
+    private val provider: Provider = defaultSecurityProvider,
     private val prefDevice: PrefDevice,
-    private val accountAccess:SavedAccount.Access,
-) :PushBase(){
+    private val accountAccess: SavedAccount.Access,
+) : PushBase() {
     override suspend fun updateSubscription(
-        subLog:SubscriptionLogger,
+        subLog: SubscriptionLogger,
         a: SavedAccount,
         willRemoveSubscription: Boolean,
-    ){
+    ) {
         val appServerHash = a.appServerHash
         if (appServerHash.isNullOrEmpty()) {
             subLog.e("アプリサーバにエンドポイントが登録されていません。プッシュディストリビュータを選択しなおしてください。")
             return
         }
-        val deviceHash = "${prefDevice.installIdv2},${a.acct}".encodeUTF8().digestSHA256().encodeBase64Url()
+        val deviceHash =
+            "${prefDevice.installIdv2},${a.acct}".encodeUTF8().digestSHA256().encodeBase64Url()
 
         val oldSubscription = try {
             api.getPushSubscription(a)
@@ -85,9 +90,9 @@ class PushMastodon(
 
         val alerts = ApiMastodon.alertTypes.associateWith { true }
         if (newUrl != oldEndpointUrl) {
-            val keyPair = crypt.generateKeyPair()
+            val keyPair = provider.generateKeyPair()
             val auth = ByteArray(16).also { SecureRandom().nextBytes(it) }
-            val p256dh = crypt.encodeP256Dh(keyPair.public as ECPublicKey)
+            val p256dh = encodeP256Dh(keyPair.public as ECPublicKey)
 
             subLog.i("api.createPushSubscription")
             val response = api.createPushSubscription(
@@ -122,10 +127,10 @@ class PushMastodon(
         }
     }
 
-    override  suspend fun formatPushMessage(
+    override suspend fun formatPushMessage(
         a: SavedAccount,
         pm: PushMessage,
-    ){
+    ) {
         val json = pm.messageJson
         val apiHost = a.apiHost
 

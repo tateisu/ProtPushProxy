@@ -158,17 +158,17 @@ suspend fun Context.loadIcon(url: String?, size: Int? = null): Bitmap? = try {
         @Suppress("ThrowableNotThrown")
         val target = object : CustomTarget<Bitmap>() {
             override fun onLoadFailed(errorDrawable: Drawable?) {
-                AdbLog.w("onLoadFailed. url=$url")
-                cont.resume(null) {}
+                if (cont.isActive) cont.resume(null) {}
+                if (!url.isNullOrEmpty()) AdbLog.w("onLoadFailed. url=$url")
             }
 
             override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                cont.resume(resource) { resource.recycle() }
+                if (cont.isActive) cont.resume(resource) { resource.recycle() }
             }
 
             override fun onLoadCleared(placeholder: Drawable?) {
-                AdbLog.w("onLoadCleared. url=$url")
-                cont.resume(null) {}
+                if (cont.isActive) cont.resume(null) {}
+                if (!url.isNullOrEmpty()) AdbLog.w("onLoadCleared. url=$url")
             }
         }
         Glide.with(this)

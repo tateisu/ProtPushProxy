@@ -15,7 +15,12 @@ import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.ProgressDialog
 import jp.juggler.pushreceiverapp.notification.showSnsNotification
 import jp.juggler.pushreceiverapp.push.PushWorker.Companion.launchUpWorker
-import jp.juggler.pushreceiverapp.push.WebPushCrypt.Companion.parseSemicoron
+import jp.juggler.pushreceiverapp.push.crypt.Aes128GcmDecoder
+import jp.juggler.pushreceiverapp.push.crypt.AesGcmDecoder
+import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
+import jp.juggler.pushreceiverapp.push.crypt.byteRangeReader
+import jp.juggler.pushreceiverapp.push.crypt.parseSemicolon
+import jp.juggler.pushreceiverapp.push.crypt.toByteRange
 import jp.juggler.util.AdbLog
 import jp.juggler.util.JsonObject
 import jp.juggler.util.decodeBase64
@@ -29,7 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import org.unifiedpush.android.connector.UnifiedPush
-import java.nio.charset.StandardCharsets
+import java.security.Provider
 import java.util.concurrent.TimeUnit
 
 val Context.pushRepo: PushRepo
@@ -53,7 +58,7 @@ class PushRepo(
     private val apiAppServer: ApiAppServer,
     private val accountAccess: SavedAccount.Access,
     private val pushMessageAccess: PushMessage.Access,
-    private val crypt: WebPushCrypt = WebPushCrypt(),
+    private val provider: Provider = defaultSecurityProvider,
     private val prefDevice: PrefDevice = context.prefDevice,
     private val fcmHandler: FcmHandler = context.fcmHandler,
 ) {
@@ -78,7 +83,7 @@ class PushRepo(
     private val pushMisskey by lazy {
         PushMisskey(
             api = apiMisskey,
-            crypt = crypt,
+            provider = provider,
             prefDevice = prefDevice,
             accountAccess = accountAccess,
         )
@@ -86,7 +91,7 @@ class PushRepo(
     private val pushMastodon by lazy {
         PushMastodon(
             api = apiMastodon,
-            crypt = crypt,
+            provider = provider,
             prefDevice = prefDevice,
             accountAccess = accountAccess,
         )
@@ -460,7 +465,8 @@ class PushRepo(
             ?: error("missing raw data.")
 
         val headerJson = pm.headerJson
-        AdbLog.i("headerJson=$headerJson")
+        AdbLog.i("headerJson.keys=${headerJson.keys.joinToString(",")}")
+
         //        headerJson={
         //            "Digest":"SHA-256=nnn",
         //            "Content-Encoding":"aesgcm",
@@ -469,33 +475,42 @@ class PushRepo(
         //            "Authorization":"WebPush XXX.XXX.XXX"
         //        }
 
-        // Encryption からsaltを読む
-        val saltBytes = headerJson.string("Encryption")?.parseSemicoron()
-            ?.get("salt")?.decodeBase64()
-            ?: error("missing Encryption.salt")
+        if (headerJson.string("Content-Encoding")?.trim() == "aes128gcm") {
+            Aes128GcmDecoder(body.byteRangeReader(), provider).run {
+                deriveKeyWebPush(
+                    // receiver private key in X509 format
+                    receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
+                    // receiver public key in 65bytes X9.62 uncompressed format
+                    receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
+                    // auth secrets created at subscription
+                    authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
+                )
+                decode()
+            }
+        } else {
+            // Crypt-Key から dh と p256ecdsa を見る
+            val cryptKeys = headerJson.string("Crypto-Key")
+                ?.parseSemicolon() ?: error("missing Crypto-Key")
 
-        // Crypt-Key から dh と p256ecdsa を見る
-        val cryptKeys = headerJson.string("Crypto-Key")?.parseSemicoron()
-            ?: error("missing Crypto-Key")
-        val dh = cryptKeys["dh"]?.decodeBase64()
-            ?: a.pushServerKey ?: error("missing pushServerKey")
-
-        val result = crypt.decodeBody(
-            body = body,
-            saltBytes = saltBytes,
-            receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
-            receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
-            senderPublicBytes = dh,
-            authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
-        )
-        val text = result.toString(StandardCharsets.UTF_8)
-        val json = text.decodeJsonObject()
-        pm.messageJson = json
-        pushBase(a).formatPushMessage(a, pm)
-
-
-
-        pushMessageAccess.save(pm)
+            AesGcmDecoder(
+                receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
+                receiverPublicBytes = a.pushKeyPublic ?: error("missing pushKeyPublic"),
+                senderPublicBytes = cryptKeys["dh"]?.decodeBase64()
+                    ?: a.pushServerKey ?: error("missing pushServerKey"),
+                authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
+                saltBytes = headerJson.string("Encryption")?.parseSemicolon()
+                    ?.get("salt")?.decodeBase64()
+                    ?: error("missing Encryption.salt"),
+                provider = provider
+            ).run {
+                deriveKey()
+                decode(body.toByteRange())
+            }
+        }.decodeUTF8().decodeJsonObject().let {
+            pm.messageJson = it
+            pushBase(a).formatPushMessage(a, pm)
+            pushMessageAccess.save(pm)
+        }
     }
 
     /**

@@ -1,8 +1,9 @@
 package jp.juggler.pushreceiverapp.notification
 
 import jp.juggler.pushreceiverapp.R
+import jp.juggler.pushreceiverapp.db.PushMessage
 
-fun notificationTypeToIconId(type: String?) = when (type) {
+fun String.notificationIconId():Int?= when (this) {
     "favourite" -> R.drawable.baseline_star_24
     "mention" -> R.drawable.baseline_alternate_email_24
     "reply" -> R.drawable.baseline_reply_24
@@ -23,5 +24,22 @@ fun notificationTypeToIconId(type: String?) = when (type) {
 
     "admin.sign_up" ->
         R.drawable.baseline_add_24
-    else -> R.drawable.nc_error
+    else -> null
+}
+
+
+
+fun PushMessage.notificationIconId():Int {
+    // mastodon
+    messageJson.string("notification_type")
+        ?.notificationIconId()?.let{ return it}
+
+    // misskey
+    when(messageJson.string("type")){
+        "notification"->
+            messageJson.jsonObject("body")?.string("type")
+                ?.notificationIconId()?.let{ return it}
+    }
+
+    return R.drawable.outline_help_outline_24
 }

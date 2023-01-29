@@ -6,19 +6,21 @@ import jp.juggler.pushreceiverapp.api.ApiMisskey
 import jp.juggler.pushreceiverapp.db.PushMessage
 import jp.juggler.pushreceiverapp.db.SavedAccount
 import jp.juggler.pushreceiverapp.push.PushRepo.Companion.followDomain
+import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
+import jp.juggler.pushreceiverapp.push.crypt.encodeP256Dh
+import jp.juggler.pushreceiverapp.push.crypt.generateKeyPair
 import jp.juggler.util.decodeBase64
 import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
 import jp.juggler.util.encodeUTF8
-import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
-import jp.juggler.util.parseTime
+import java.security.Provider
 import java.security.SecureRandom
 import java.security.interfaces.ECPublicKey
 
 class PushMisskey(
     private val api: ApiMisskey,
-    private val crypt: WebPushCrypt,
+    private val provider: Provider = defaultSecurityProvider,
     private val prefDevice: PrefDevice,
     private val accountAccess: SavedAccount.Access,
 ) : PushBase() {
@@ -56,10 +58,10 @@ class PushMisskey(
             }
 
             if (lastSubscription != null) {
-                if( lastSubscription.size == 0){
+                if (lastSubscription.size == 0) {
                     // 購読がないと空レスポンスになり、アプリ側で空オブジェクトに変換される
                     hasEmptySubscription = true
-                }else if (lastEndpointUrl == newUrl && !willRemoveSubscription) {
+                } else if (lastEndpointUrl == newUrl && !willRemoveSubscription) {
                     when (lastSubscription.boolean("sendReadMessage")) {
                         false -> subLog.i(R.string.push_subscription_keep_using)
                         else -> {
@@ -69,7 +71,7 @@ class PushMisskey(
                         }
                     }
                     return
-                }else{
+                } else {
                     // 古い購読はあったが、削除したい
                     api.deletePushSubscription(a, lastEndpointUrl)
                     a.tokenJson.remove(JSON_LAST_ENDPOINT_URL)
@@ -109,9 +111,9 @@ class PushMisskey(
             a.pushAuthSecret == null
         ) {
             subLog.i("秘密鍵を生成します…")
-            val keyPair = crypt.generateKeyPair()
+            val keyPair = provider.generateKeyPair()
             val auth = ByteArray(16).also { SecureRandom().nextBytes(it) }
-            val p256dh = crypt.encodeP256Dh(keyPair.public as ECPublicKey)
+            val p256dh = encodeP256Dh(keyPair.public as ECPublicKey)
             a.pushKeyPrivate = keyPair.private.encoded
             a.pushKeyPublic = p256dh
             a.pushAuthSecret = auth
@@ -153,32 +155,26 @@ class PushMisskey(
         val json = pm.messageJson
         val apiHost = a.apiHost
 
-        if (json.containsKey("notification_type")) {
-            // Mastodon 4.0
-            pm.messageShort = json.string("title")?.trim()?.notBlank()
-            pm.messageLong = StringBuilder().apply {
-                json.string("title")?.notBlank()
-                    ?.let { append(it).append("\n") }
-                json.string("body")?.notBlank()
-                    ?.let { append(it).append("\n") }
-            }.trim().notBlank()?.toString()
-            pm.iconLarge = json.string("icon").followDomain(apiHost)
-            // iconSmall は通知タイプに合わせてアプリが用意するらしい
-        } else {
-            // old mastodon
-            pm.timestamp = json.string("timestamp")
-                ?.parseTime() ?: pm.timestamp
-            pm.messageShort = json.string("title")?.trim()?.notBlank()
-            pm.messageLong = StringBuilder().apply {
-                json.string("title")?.notBlank()
-                    ?.let { append(it).append("\n") }
-                json.jsonObject("data")?.string("url")?.notBlank()
-                    ?.let { append(it).append("\n") }
-                json.jsonObject("data")?.string("message")?.notBlank()
-                    ?.let { append(it).append("\n") }
-            }.trim().notBlank()?.toString()
-            pm.iconSmall = json.string("badge").followDomain(apiHost)
-            pm.iconLarge = json.string("icon").followDomain(apiHost)
+        json.long("dateTime")?.let {
+            pm.timestamp = it
+        }
+
+        val body = json.jsonObject("body")
+        val user = body?.jsonObject("user")
+        pm.iconSmall = null // バッジ画像のURLはない。drawableの種類は後で決める
+        pm.iconLarge = user?.string("avatarUrl").followDomain(apiHost)
+
+        when (val eventType = json.string("type")) {
+            "notification" -> {
+                val notificationType = body?.string("type")
+                pm.messageShort = "$notificationType user=${user?.string("username")}"
+                pm.messageLong = "$notificationType user=${user?.string("username")}"
+            }
+            else -> {
+                pm.messageShort = "謎のイベント $eventType user=${user?.string("username")}"
+                pm.messageLong = "謎のイベント $eventType user=${user?.string("username")}"
+
+            }
         }
     }
 }

@@ -22,7 +22,7 @@ import jp.juggler.pushreceiverapp.db.appDatabase
 import jp.juggler.pushreceiverapp.dialog.actionsDialog
 import jp.juggler.pushreceiverapp.dialog.runInProgress
 import jp.juggler.pushreceiverapp.notification.launchAndShowError
-import jp.juggler.pushreceiverapp.notification.notificationTypeToIconId
+import jp.juggler.pushreceiverapp.notification.notificationIconId
 import jp.juggler.pushreceiverapp.notification.showAlertNotification
 import jp.juggler.pushreceiverapp.permission.permissionSpecNotification
 import jp.juggler.pushreceiverapp.permission.requester
@@ -136,7 +136,7 @@ class ActMain : AppCompatActivity() {
         launchAndShowError {
             AdbLog.i("handleIntent: uri = $uri")
             val auth2Result = authRepo.authStep2(uri)
-            val a= authRepo.updateAccount(auth2Result)
+            val a = authRepo.updateAccount(auth2Result)
             showAlertNotification(
                 title = a.acct,
                 message = getString(R.string.approved),
@@ -281,7 +281,7 @@ class ActMain : AppCompatActivity() {
             pm ?: return
             lastItem = pm
 
-            val iconId = notificationTypeToIconId(pm.messageJson.string("notification_type"))
+            val iconId = pm.notificationIconId()
             Glide.with(views.ivSmall)
                 .load(pm.iconSmall)
                 .error(iconId)

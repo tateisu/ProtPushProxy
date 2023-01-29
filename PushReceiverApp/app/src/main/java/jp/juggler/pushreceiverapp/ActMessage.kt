@@ -8,12 +8,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.bumptech.glide.Glide
-import jp.juggler.pushreceiverapp.notification.launchAndShowError
 import jp.juggler.pushreceiverapp.databinding.ActMessageBinding
 import jp.juggler.pushreceiverapp.db.PushMessage
 import jp.juggler.pushreceiverapp.db.SavedAccount
 import jp.juggler.pushreceiverapp.db.appDatabase
-import jp.juggler.pushreceiverapp.notification.notificationTypeToIconId
+import jp.juggler.pushreceiverapp.notification.launchAndShowError
+import jp.juggler.pushreceiverapp.notification.notificationIconId
 import jp.juggler.util.formatTime
 import jp.juggler.util.setNavigationBack
 import kotlinx.coroutines.flow.combine
@@ -89,7 +89,7 @@ class ActMessage : AppCompatActivity() {
 
         title = getString(R.string.notification_to, pm.loginAcct)
 
-        val iconId = notificationTypeToIconId(pm.messageJson.string("notification_type"))
+        val iconId = pm.notificationIconId()
         Glide.with(views.ivSmall)
             .load(pm.iconSmall)
             .error(iconId)
