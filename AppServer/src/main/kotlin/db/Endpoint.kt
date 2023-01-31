@@ -80,7 +80,7 @@ data class Endpoint(
         /**
          * 複数のEndpoint登録を更新する
          *
-         * @returm map of acctHash to appServerHash
+         * @return map of acctHash to appServerHash
          *
          */
         override suspend fun upsert(

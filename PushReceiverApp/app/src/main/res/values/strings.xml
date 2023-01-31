@@ -46,4 +46,5 @@
     <string name="push_subscription_app_server_hash_missing_but_ok">プッシュ配送サービスをアプリサーバに登録できていませんが、購読が不要な状況なので問題ありません。</string>
     <string name="push_subscription_app_server_hash_missing_error">プッシュ配送サービスをアプリサーバに登録できていません。プッシュ配送サービスを再度選択すると改善する場合があります。</string>
     <string name="incorrect_chars">incorrect chars \"%1$s\"</string>
+    <string name="account_list">Account list</string>
 </resources>

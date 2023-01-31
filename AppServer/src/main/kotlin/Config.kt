@@ -2,6 +2,7 @@ import util.isTruth
 import java.io.File
 import java.nio.charset.StandardCharsets
 
+@Suppress("MemberVisibilityCanBePrivate")
 class Config {
 
     var verbose = false

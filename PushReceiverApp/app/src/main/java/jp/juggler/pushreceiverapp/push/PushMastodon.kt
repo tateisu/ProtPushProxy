@@ -9,9 +9,7 @@ import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
 import jp.juggler.pushreceiverapp.push.crypt.encodeP256Dh
 import jp.juggler.pushreceiverapp.push.crypt.generateKeyPair
 import jp.juggler.util.decodeBase64
-import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
-import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import jp.juggler.util.parseTime
@@ -22,7 +20,7 @@ import java.security.interfaces.ECPublicKey
 class PushMastodon(
     private val api: ApiMastodon,
     private val provider: Provider = defaultSecurityProvider,
-    private val prefDevice: PrefDevice,
+    override val prefDevice: PrefDevice,
     private val accountAccess: SavedAccount.Access,
 ) : PushBase() {
     override suspend fun updateSubscription(
@@ -30,13 +28,12 @@ class PushMastodon(
         a: SavedAccount,
         willRemoveSubscription: Boolean,
     ) {
-        val appServerHash = a.appServerHash
-        if (appServerHash.isNullOrEmpty()) {
+        val deviceHash = deviceHash(a)
+        val newUrl = snsCallbackUrl(a)
+        if (newUrl.isNullOrEmpty()) {
             subLog.e("アプリサーバにエンドポイントが登録されていません。プッシュディストリビュータを選択しなおしてください。")
             return
         }
-        val deviceHash =
-            "${prefDevice.installIdv2},${a.acct}".encodeUTF8().digestSHA256().encodeBase64Url()
 
         val oldSubscription = try {
             api.getPushSubscription(a)
@@ -48,7 +45,6 @@ class PushMastodon(
             }
         }
         subLog.i("${a.acct} oldSubscription=${oldSubscription}")
-        val newUrl = "${appServerUrlPrefix}/a_${appServerHash}/dh_${deviceHash}"
 
         val oldEndpointUrl = oldSubscription?.string("endpoint")
         when (oldEndpointUrl) {

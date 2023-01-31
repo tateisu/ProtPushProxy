@@ -1,7 +1,5 @@
 package jp.juggler.util
 
-import org.brotli.dec.BrotliInputStream
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 /**
@@ -57,15 +55,4 @@ object Base128 {
                 it.append(outBits.toChar())
             }
         }.toString()
-
-    fun ByteArray.decompressBrotli(): ByteArray =
-        ByteArrayInputStream(this).use { bai ->
-            BrotliInputStream(bai).use { inStream ->
-                ByteArrayOutputStream().use { outStream ->
-                    inStream.copyTo(outStream)
-                    outStream.flush()
-                    outStream.toByteArray()
-                }
-            }
-        }
 }

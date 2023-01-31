@@ -1,3 +1,5 @@
+@file:Suppress("unused")
+
 package util
 
 import org.apache.commons.codec.binary.Base64
@@ -51,8 +53,5 @@ fun ByteArray.digestSHA256(): ByteArray =
 fun <T : CharSequence> T?.notEmpty() = if (this.isNullOrEmpty()) null else this
 fun <T : CharSequence> T?.notBlank() = if (this.isNullOrBlank()) null else this
 
-val reEscapeRequired = """[^\w]""".toRegex()
-fun String.escape() =
-    reEscapeRequired.replace(this) {
-        "\\u%04x".format(it.value.first().code)
-    }
+fun Int?.notZero() = if (this == null || this == 0) null else this
+

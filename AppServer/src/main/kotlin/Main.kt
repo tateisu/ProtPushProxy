@@ -2,6 +2,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import db.Endpoint
 import db.EndpointUsage
+import db.LargeMessage
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
@@ -9,6 +10,8 @@ import io.ktor.client.plugins.logging.DEFAULT
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
+import io.ktor.http.ContentType
+import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.application.install
@@ -18,6 +21,7 @@ import io.ktor.server.plugins.callloging.CallLogging
 import io.ktor.server.plugins.doublereceive.DoubleReceive
 import io.ktor.server.request.receive
 import io.ktor.server.request.uri
+import io.ktor.server.response.respondBytes
 import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -25,7 +29,6 @@ import io.ktor.server.routing.routing
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -36,20 +39,21 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import org.slf4j.event.Level
-import util.Base128.encodeBase128
-import util.BrotliUtils
-import util.BrotliUtils.compressBrotli
+import util.BinPackMap
 import util.buildJsonObject
-import util.decodeBase64
 import util.decodeJsonObject
 import util.decodeUTF8
 import util.e
-import util.encodeUTF8
+import util.encodeBase128
+import util.encodeBinPack
+import util.gone
 import util.i
+import util.jsonApi
 import util.jsonObjectOf
 import util.notBlank
 import util.notEmpty
-import java.io.ByteArrayOutputStream
+import util.notZero
+import util.respondError
 import java.io.File
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
@@ -64,9 +68,13 @@ val encryptionHeaders = arrayOf(
 private val log = LoggerFactory.getLogger("Main")
 
 val config = Config()
-val verbose get() = config.verbose
+// val verbose get() = config.verbose
 
-val tables = arrayOf(Endpoint.Meta, EndpointUsage.Meta)
+val tables = arrayOf(
+    Endpoint.Meta,
+    EndpointUsage.Meta,
+    LargeMessage.Meta,
+)
 
 val client = HttpClient(CIO) {
     install(Logging) {
@@ -100,8 +108,6 @@ fun main(args: Array<String>) {
     val pid = ProcessHandle.current().pid()
     log.i("main start! pid=$pid, pwd=${File(".").canonicalFile}")
 
-    BrotliUtils.requireInitialized()
-
     config.parseArgs(args)
 
     config.pidFile.notBlank()?.let {
@@ -133,18 +139,20 @@ fun main(args: Array<String>) {
         port = config.listenPort,
         module = Application::module
     ).start(wait = false)
+
     Runtime.getRuntime().addShutdownHook(Thread {
+        log.i("cancel timer job…")
+        timeJob.cancel()
         log.i("stop http server…")
         server.stop(
             gracePeriodMillis = 166L,
             timeoutMillis = TimeUnit.SECONDS.toMillis(10),
         )
-        log.i("stop timer job…")
-        runBlocking {
-            timeJob.cancelAndJoin()
-        }
+        log.i("join timer job…")
+        runBlocking { timeJob.join() }
         log.i("shutdown complete.")
     })
+
     Thread.currentThread().join()
 }
 
@@ -152,8 +160,9 @@ fun main(args: Array<String>) {
 fun launchTimerJob() = GlobalScope.launch(Dispatchers.IO) {
     while (true) {
         try {
-            delay(100000)
+            delay(TimeUnit.MINUTES.toMillis(5))
             deleteOldEndpoints()
+            deleteOldLargeMessage()
         } catch (ex: Throwable) {
             if (ex is CancellationException) break
             log.e(ex, "timerJob error")
@@ -163,10 +172,24 @@ fun launchTimerJob() = GlobalScope.launch(Dispatchers.IO) {
 
 suspend fun deleteOldEndpoints() {
     val usageAccess = EndpointUsage.AccessImpl()
-    val endpointAccess = Endpoint.AccessImpl()
+
     val oldIds = usageAccess.oldIds()
-    endpointAccess.deleteIds(oldIds)
+
+    Endpoint.AccessImpl().deleteIds(oldIds)
+        .notZero()
+        ?.let { log.i("endpointAccess.deleteIds: count=$it") }
+
     usageAccess.deleteIds(oldIds)
+        .notZero()
+        ?.let { log.i("usageAccess.deleteIds: count=$it") }
+}
+
+suspend fun deleteOldLargeMessage() {
+    val expire = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30)
+    LargeMessage.AccessImpl()
+        .deleteOld(expire)
+        .notZero()
+        ?.let { log.i("deleteOldLargeMessage: count=$it") }
 }
 
 fun Application.module() {
@@ -221,81 +244,93 @@ fun Application.module() {
         }
 
         post("/m/{...}") {
-            jsonApi {
-                val params = buildMap {
-                    call.request.uri.substring(3).split("/").forEach { pair ->
-                        val cols = pair.split("_", limit = 2)
-                        cols.elementAtOrNull(0).notEmpty()?.let { k ->
-                            put(k, cols.elementAtOrNull(1) ?: "")
-                        }
+
+            fun String.parsePath() = buildMap {
+                split("/").forEach { pair ->
+                    val cols = pair.split("_", limit = 2)
+                    cols.elementAtOrNull(0).notEmpty()?.let { k ->
+                        put(k, cols.elementAtOrNull(1) ?: "")
                     }
                 }
+            }
+
+            jsonApi {
+                val params = call.request.uri.substring(3).parsePath()
                 val appServerHash = params["a"]
                     ?: error("missing json parameter 'a'")
-
                 val dao = Endpoint.AccessImpl()
                 val endpoint = dao.find(appServerHash)
                     ?: "missing endpoint for this hash.".gone()
 
-                val headerJson = buildJsonObject {
+                val headerMap = BinPackMap().also { dst ->
                     for (e in call.request.headers.entries()) {
-                        if (encryptionHeaders.contains(e.key.lowercase())) {
-                            e.value.firstOrNull()?.let { put(e.key, it) }
+                        // HTTPヘッダのキーを小文字にする
+                        val k = e.key.lowercase()
+                        if (encryptionHeaders.contains(k)) {
+                            e.value.firstOrNull()?.let {
+                                dst.put(k, it)
+                            }
                         }
                     }
                 }
 
                 val body = call.receive<ByteArray>()
 
+                val longMessage = BinPackMap().apply {
+                    put("a", endpoint.acctHash)
+                    put("h", headerMap)
+                    put("b", body)
+                }.encodeBinPack()
+
+                suspend fun data(ratio: Float) = when {
+                    longMessage.size.toFloat().times(ratio) <= 4000f -> longMessage
+                    else -> {
+                        // 長いバイトデータはDBに保存してキーを送る
+                        val uuid = LargeMessage.AccessImpl().create(longMessage)
+                        BinPackMap().apply {
+                            put("a", endpoint.acctHash)
+                            put("l", uuid)
+                        }.encodeBinPack()
+                    }
+                }
+
                 val upUrl = endpoint.upUrl
                 val fcmToken = endpoint.fcmToken
+
                 when {
                     upUrl != null -> withContext(Dispatchers.IO) {
-                        val newBody = ByteArrayOutputStream().also {
-                            fun ByteArray.writeSection() {
-                                val n = size
-                                it.write(n.and(255))
-                                it.write(n.ushr(8).and(255))
-                                it.write(n.ushr(16).and(255))
-                                it.write(n.ushr(24).and(255))
-                                it.write(this)
-                            }
-                            endpoint.acctHash.encodeUTF8().writeSection()
-                            headerJson.toString().encodeUTF8().writeSection()
-                            body.writeSection()
-                        }.toByteArray()
-                        val compressed = newBody.compressBrotli()
-                        log.i("send ${compressed.size}/${newBody.size} bytes to $upUrl")
-                        sendUnifiedPush.send(compressed, upUrl)
+                        sendUnifiedPush.send(data(1f), upUrl)
                         EndpointUsage.AccessImpl().updateUsage1(appServerHash)
-                        jsonObjectOf("result" to "sent to UnifiedPush server.")
+                        jsonObjectOf("result" to "sent to UnifiedPush endpoint.")
                     }
 
                     fcmToken != null -> withContext(Dispatchers.IO) {
-                        sendFcm.send(fcmToken) {
-                            val acctHashEncoded = endpoint.acctHash.decodeBase64().compressBrotli().encodeBase128()
-                            val headerJsonEncoded =
-                                headerJson.toString().encodeUTF8().compressBrotli().encodeBase128()
-                            val bodyEncoded = body.compressBrotli().encodeBase128()
-                            putData("a", acctHashEncoded)
-                            putData("h", headerJsonEncoded)
-                            putData("b", bodyEncoded)
-                            log.i(
-                                "acct.length=${
-                                    acctHashEncoded.length
-                                }, header.length=${
-                                    headerJsonEncoded.length
-                                }, body.length=${
-                                    bodyEncoded.length
-                                } fcmToken=$fcmToken"
-                            )
-                        }
+                        // Base128の変換ロスが14%あるかも
+                        sendFcm.send(fcmToken) { putData("d", data(1.142f).encodeBase128()) }
                         EndpointUsage.AccessImpl().updateUsage1(appServerHash)
-                        jsonObjectOf("result" to "sent to FCM. messageId=$it")
+                        jsonObjectOf("result" to "sent to FCM.")
                     }
 
                     else -> "missing redirect destination.".gone()
                 }
+            }
+        }
+        get("/l/{objectId}") {
+            try {
+                call.parameters["objectId"]
+                    ?.let { LargeMessage.AccessImpl().find(it) }
+                    ?.let {
+                        call.respondBytes(
+                            it.data,
+                            contentType = ContentType.Application.OctetStream,
+                            status = HttpStatusCode.OK
+                        )
+                        return@get
+                    }
+                "object id not match".respondError(call, status = HttpStatusCode.BadRequest)
+            } catch (ex: Throwable) {
+                log.e(ex, "/l failed.")
+                "server side problem.".respondError(call)
             }
         }
     }

@@ -22,6 +22,7 @@ import jp.juggler.pushreceiverapp.push.PushBase
 import jp.juggler.pushreceiverapp.push.pushRepo
 import jp.juggler.util.AdbLog
 import jp.juggler.util.cast
+import jp.juggler.util.setNavigationBack
 import jp.juggler.util.withCaption
 import kotlinx.coroutines.launch
 
@@ -49,6 +50,7 @@ class ActAccountList : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(views.root)
         setSupportActionBar(views.toolbar)
+        setNavigationBack(views.toolbar)
 
         views.btnAddAccount.setOnClickListener {
             addAccount()

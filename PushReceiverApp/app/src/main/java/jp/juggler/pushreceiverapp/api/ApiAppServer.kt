@@ -1,10 +1,12 @@
 package jp.juggler.pushreceiverapp.api
 
+import jp.juggler.util.AppDispatchers
 import jp.juggler.util.JsonObject
 import jp.juggler.util.buildJsonObject
 import jp.juggler.util.encodeQuery
 import jp.juggler.util.jsonArrayOf
 import jp.juggler.util.toPostRequestBuilder
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -49,4 +51,13 @@ class ApiAppServer(
             .await(okHttp)
             .readJsonObject()
 
+    suspend fun getLargeObject(
+        largeObjectId: String
+    ): ByteArray? = withContext(AppDispatchers.IO) {
+        Request.Builder()
+            .url("${appServerPrefix}/l/$largeObjectId")
+            .build()
+            .await(okHttp)
+            .body?.bytes()
+    }
 }

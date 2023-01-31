@@ -174,10 +174,7 @@ suspend fun Context.loadIcon(url: String?, size: Int): Bitmap? = try {
         Glide.with(this)
             .asBitmap()
             .load(url)
-            .apply {
-                @Suppress("CheckResult")
-                size?.let { override(it) }
-            }
+            .override(size)
             .into(target)
         cont.invokeOnCancellation {
             Glide.with(this).clear(target)

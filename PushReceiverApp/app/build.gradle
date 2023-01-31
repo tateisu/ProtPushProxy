@@ -23,9 +23,9 @@ android {
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments += [
-                        "room.schemaLocation":"$projectDir/schemas".toString(),
-                        "room.incremental":"true",
-                        "room.expandProjection":"true"]
+                        "room.schemaLocation"  : "$projectDir/schemas".toString(),
+                        "room.incremental"     : "true",
+                        "room.expandProjection": "true"]
             }
         }
     }
@@ -111,8 +111,6 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-datetime:0.4.0"
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1"
     implementation "ru.gildor.coroutines:kotlin-coroutines-okhttp:1.0"
-
-    implementation "org.brotli:dec:0.1.2"
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'

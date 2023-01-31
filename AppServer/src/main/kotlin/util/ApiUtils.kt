@@ -1,3 +1,5 @@
+package util
+
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
@@ -6,10 +8,6 @@ import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.util.pipeline.PipelineContext
 import org.slf4j.LoggerFactory
-import util.JsonObject
-import util.e
-import util.jsonObjectOf
-import util.withCaption
 
 private val log = LoggerFactory.getLogger("JsonApi")
 suspend fun JsonObject.respond(
@@ -46,7 +44,7 @@ suspend fun PipelineContext<*, ApplicationCall>.jsonApi(
         block().respond(call)
     } catch (ex: Throwable) {
         if (ex is RespondError) {
-            log.e("respondError ${ex.status} ${ex.message}")
+            log.e("util.respondError ${ex.status} ${ex.message}")
             (ex.message ?: "(null)").respondError(call,status = ex.status )
         } else {
             log.e(ex, "${call.request.uri} failed.")

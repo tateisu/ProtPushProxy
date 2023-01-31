@@ -1,3 +1,7 @@
+@file:Suppress("unused", "MemberVisibilityCanBePrivate", "KotlinConstantConditions", "BooleanMethodIsAlwaysInverted",
+    "GrazieInspection"
+)
+
 package util
 
 import org.slf4j.LoggerFactory
@@ -56,7 +60,7 @@ private fun String.stringToNumber(): Number {
                 // BigInteger version: We use a similar bitLength compare as
                 // BigInteger#intValueExact uses. Increases GC, but objects hold
                 // only what they need. i.e. Less runtime overhead if the value is
-                // long lived. Which is the better tradeoff? This is closer to what's
+                // long-lived. Which is the better tradeoff? This is closer to what's
                 // in stringToValue.
                 val bi = BigInteger(this)
                 return when {
@@ -393,7 +397,7 @@ class JsonTokenizer(reader: Reader) {
     /**
      * Checks if the end of the input has been reached.
      *
-     * @return true if at the end of the file and we didn't step back
+     * @return true if at the end of the file, and we didn't step back
      */
     private fun end(): Boolean {
         return eof && !usePrevious
@@ -579,6 +583,7 @@ class JsonTokenizer(reader: Reader) {
                         } catch (e: NumberFormatException) {
                             throw syntaxError("Illegal escape.", e)
                         }
+
                         '"', '\'', '\\', '/' -> sb.append(c)
                         else -> throw syntaxError("Illegal escape.")
                     }
@@ -694,7 +699,7 @@ class JsonTokenizer(reader: Reader) {
     //	 * @return The requested character, or zero if the requested character
     //	 * is not found.
     //	 * @throws JsonException Thrown if there is an error while searching
-    //	 * for the to character
+    //	 * for the two character
     //	 */
     //	@Throws(JsonException::class)
     //	fun skipTo(to : Char) : Char {
@@ -747,7 +752,7 @@ class JsonTokenizer(reader: Reader) {
     ) = JsonException(message + toString(), causedBy)
 
     /**
-     * Make a printable string of this JSONTokener.
+     * Make a printable string of this JsonTokenizer.
      *
      * @return " at {index} [character {character} line {line}]"
      */
@@ -763,6 +768,7 @@ class JsonTokenizer(reader: Reader) {
             val key: String = when (c) {
                 CHAR0 ->
                     throw syntaxError("A JsonObject text must end with '}'")
+
                 '}' ->
                     return dst
 
@@ -823,6 +829,7 @@ class JsonTokenizer(reader: Reader) {
                             ']' -> return dst
                             else -> back()
                         }
+
                         else -> throw syntaxError("Expected a ',' or ']'")
                     }
                 }
@@ -1053,7 +1060,7 @@ fun Writer.writeJsonValue(
             } else {
                 // not all Numbers may match actual JSON Numbers. i.e. fractions or Imaginary
                 // The Number value is not a valid JSON number.
-                // Instead we will quote it as a string
+                // Instead, we will quote it as a string
                 writeQuote(sv)
             }
         }

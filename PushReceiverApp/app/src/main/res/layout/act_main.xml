@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:orientation="vertical">
 
     <androidx.appcompat.widget.Toolbar
@@ -15,35 +15,35 @@
     <com.google.android.flexbox.FlexboxLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        app:flexWrap="wrap"
-        android:layout_margin="12dp">
+        android:layout_marginHorizontal="12dp"
+        app:flexWrap="wrap">
 
         <ImageButton
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/btnAlertTest"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="2dp"
             android:contentDescription="@string/alert_test"
             android:src="@drawable/outline_add_alert_24"
-            app:tint="?attr/colorText"
-            android:layout_marginEnd="2dp"
-            android:id="@+id/btnAlertTest"/>
+            app:tint="?attr/colorText" />
 
         <ImageButton
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/btnManageAccount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginEnd="2dp"
-            android:contentDescription="@string/add_account"
+            android:contentDescription="@string/account_list"
             android:src="@drawable/outline_manage_accounts_24"
-            app:tint="?attr/colorText"
-            android:id="@+id/btnManageAccount"/>
+            app:tint="?attr/colorText" />
 
         <ImageButton
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:id="@+id/btnPushDistributor"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_marginEnd="2dp"
             android:contentDescription="@string/push_distributor"
             android:src="@drawable/outline_delivery_dining_24"
-            app:tint="?attr/colorText"
-            android:id="@+id/btnPushDistributor"/>
+            app:tint="?attr/colorText" />
 
     </com.google.android.flexbox.FlexboxLayout>
 
@@ -56,12 +56,11 @@
         android:scrollbarStyle="outsideOverlay" />
 
     <TextView
+        android:id="@+id/tvStatus"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:id="@+id/tvStatus"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="4dp"
-        android:minHeight="40dp"
         android:gravity="center_vertical|start"
-        />
+        android:minHeight="40dp"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="4dp" />
 </LinearLayout>

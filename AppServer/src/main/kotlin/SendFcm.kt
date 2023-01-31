@@ -5,6 +5,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingException
 import com.google.firebase.messaging.Message
 import com.google.firebase.messaging.MessagingErrorCode
+import util.gone
 import util.notBlank
 import java.io.File
 import java.io.FileInputStream

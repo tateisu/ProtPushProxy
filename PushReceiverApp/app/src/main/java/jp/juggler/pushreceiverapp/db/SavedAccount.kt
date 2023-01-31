@@ -11,7 +11,6 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import jp.juggler.pushreceiverapp.auth.AuthBase.Companion.JSON_ACCESS_TOKEN
-import jp.juggler.pushreceiverapp.auth.AuthRepo
 import jp.juggler.util.*
 import kotlinx.coroutines.flow.Flow
 
@@ -21,33 +20,52 @@ import kotlinx.coroutines.flow.Flow
         Index(
             value = [SavedAccount.COL_USER_NAME, SavedAccount.COL_AP_DOMAIN],
             unique = true,
+        ),
+        Index(
+            value = [SavedAccount.COL_ACCT_HASH],
+            unique = true,
         )
     ]
 )
 data class SavedAccount(
+    // テーブル上のID
     @PrimaryKey(autoGenerate = true)
     @ColumnInfo(name = COL_DB_ID)
     var dbId: Long = 0L,
+    // APIサーバのホスト名
     @ColumnInfo(name = COL_API_HOST)
     var apiHost: String = "",
+    // ActivityPubのドメイン名
     @ColumnInfo(name = COL_AP_DOMAIN)
     var apDomain: String = "",
+    // サーバ上のusername
     @ColumnInfo(name = COL_USER_NAME)
     var userName: String = "",
+    // acctのハッシュ値
+    @ColumnInfo(name = COL_ACCT_HASH)
+    var acctHash: String = "",
+    // 認証情報の入ったJsonObject
     @ColumnInfo(name = COL_TOKEN_JSON)
     var tokenJson: JsonObject = JsonObject(),
+    // ユーザ情報の入ったJsonObject
     @ColumnInfo(name = COL_ACCOUNT_JSON)
     var accountJson: JsonObject = JsonObject(),
+    // サーバ情報の入ったJsonObject
     @ColumnInfo(name = COL_SERVER_JSON)
     var serverJson: JsonObject = JsonObject(),
+    // プッシュ購読時に作成した秘密鍵
     @ColumnInfo(name = COL_PUSH_KEY_PRIVATE)
     var pushKeyPrivate: ByteArray? = null,
+    // プッシュ購読時に作成した公開鍵
     @ColumnInfo(name = COL_PUSH_KEY_PUBLIC)
     var pushKeyPublic: ByteArray? = null,
+    // プッシュ購読時に作成した乱数データ
     @ColumnInfo(name = COL_PUSH_AUTH_SECRET)
     var pushAuthSecret: ByteArray? = null,
+    // プッシュ購読時に取得したサーバ公開鍵
     @ColumnInfo(name = COL_PUSH_SERVER_KEY)
     var pushServerKey: ByteArray? = null,
+    // アプリサーバから受け取ったハッシュ
     @ColumnInfo(name = COL_APP_SERVER_HASH)
     var appServerHash: String? = null,
 ) {
@@ -57,6 +75,7 @@ data class SavedAccount(
         const val COL_API_HOST = "api_host"
         const val COL_AP_DOMAIN = "ap_domain"
         const val COL_USER_NAME = "user_name"
+        const val COL_ACCT_HASH = "acct_hash"
         const val COL_TOKEN_JSON = "token_json"
         const val COL_ACCOUNT_JSON = "account_json"
         const val COL_SERVER_JSON = "server_json"
@@ -76,6 +95,9 @@ data class SavedAccount(
 
         @Query("SELECT * FROM $TABLE where $COL_DB_ID=:dbId")
         abstract suspend fun find(dbId: Long): SavedAccount?
+
+        @Query("SELECT * FROM $TABLE where $COL_ACCT_HASH=:acctHash")
+        abstract suspend fun findAcctHash(acctHash: String): SavedAccount?
 
         @Query("SELECT * FROM $TABLE where $COL_USER_NAME=:userName and $COL_AP_DOMAIN=:apDomain")
         abstract suspend fun find(userName: String, apDomain: String): SavedAccount?
@@ -109,17 +131,19 @@ data class SavedAccount(
 
         @Transaction
         open suspend fun save(a: SavedAccount): Long {
+            if (a.acctHash.isEmpty()) {
+                a.acctHash = a.acct.encodeUTF8().digestSHA256().encodeBase64Url()
+            }
             when (a.dbId) {
                 0L -> a.dbId = insert(a)
                 else -> update(a)
             }
             return a.dbId
         }
-
     }
 
     val acct: String
-        get() = "$userName@$apDomain"
+        get() = "$userName@${apDomain.notEmpty() ?: apiHost}"
 
     val accessToken: String?
         get() = tokenJson.string(JSON_ACCESS_TOKEN)

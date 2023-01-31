@@ -1,7 +1,6 @@
 package jp.juggler.pushreceiverapp
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.ViewGroup
@@ -45,10 +44,6 @@ import org.unifiedpush.android.connector.UnifiedPush
 import java.io.PrintWriter
 
 class ActMain : AppCompatActivity() {
-    companion object {
-        fun Context.intentActMain() =
-            Intent(this, ActMain::class.java)
-    }
 
     private val views by lazy {
         ActMainBinding.inflate(layoutInflater)
@@ -254,7 +249,7 @@ class ActMain : AppCompatActivity() {
                     displayName = "PushMessageDump-${pm.messageDbId}.txt",
                 ) { out ->
                     PrintWriter(out).apply {
-                        println("messageJson=${pm.messageJson.toString(1,sort = true)}")
+                        println("messageJson=${pm.messageJson.toString(1, sort = true)}")
                         println("receiverPrivateBytes=${a.pushKeyPrivate?.encodeBase64Url()}")
                         println("receiverPublicBytes=${a.pushKeyPublic?.encodeBase64Url()}")
                         println("senderPublicBytes=${a.pushServerKey?.encodeBase64Url()}")
@@ -293,10 +288,11 @@ class ActMain : AppCompatActivity() {
                 .load(pm.iconLarge)
                 .into(views.ivLarge)
 
-            views.tvText.text = arrayOf<String?>(
-                "to ${pm.loginAcct}",
-                "when ${pm.timestamp.formatTime()}",
-                pm.timeDismiss.takeIf { it > 0L }?.let{"既読 ${it.formatTime()}"},
+            views.tvText.text = arrayOf(
+                "to: ${pm.loginAcct}",
+                "when: ${pm.timestamp.formatTime()}",
+                pm.timeDismiss.takeIf { it > 0L }?.let { "既読: ${it.formatTime()}" },
+                "dataSize: ${pm.rawBody?.size}",
                 pm.messageLong
             ).mapNotNull { it.notBlank() }.joinToString("\n")
         }

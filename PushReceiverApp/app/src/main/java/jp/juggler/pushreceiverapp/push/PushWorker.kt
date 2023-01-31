@@ -24,7 +24,7 @@ class PushWorker(appContext: Context, workerParams: WorkerParameters) :
     companion object {
         const val KEY_ACTION = "action"
         const val ACTION_UP_ENDPOINT = "upEndpoint"
-        const val ACTION_UP_MESSAGE = "upMessage"
+        const val ACTION_MESSAGE = "message"
         const val ACTION_REGISTER_ENDPOINT = "endpointRegister"
 
         const val KEY_ENDPOINT = "endpoint"
@@ -61,10 +61,10 @@ class PushWorker(appContext: Context, workerParams: WorkerParameters) :
                     val keepAliveMode = inputData.getBoolean(KEY_KEEP_ALIVE_MODE, false)
                     pushRepo.registerEndpoint(keepAliveMode)
                 }
-                ACTION_UP_MESSAGE -> {
+                ACTION_MESSAGE -> {
                     val messageId = inputData.getLong(KEY_MESSAGE_ID, 0L)
                         .takeIf { it != 0L } ?: error("missing message id.")
-                    pushRepo.handleUpMessage(messageId)
+                    pushRepo.updateMessage(messageId)
                 }
                 else -> error("invalid action $action")
             }

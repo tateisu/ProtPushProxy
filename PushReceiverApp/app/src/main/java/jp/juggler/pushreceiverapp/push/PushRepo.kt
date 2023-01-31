@@ -22,15 +22,14 @@ import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
 import jp.juggler.pushreceiverapp.push.crypt.parseSemicolon
 import jp.juggler.pushreceiverapp.push.crypt.toByteRange
 import jp.juggler.util.AdbLog
+import jp.juggler.util.AppDispatchers
 import jp.juggler.util.Base128.decodeBase128
-import jp.juggler.util.Base128.decompressBrotli
-import jp.juggler.util.JsonObject
+import jp.juggler.util.BinPackMap
+import jp.juggler.util.buildJsonObject
 import jp.juggler.util.decodeBase64
+import jp.juggler.util.decodeBinPack
+import jp.juggler.util.decodeBinPackMap
 import jp.juggler.util.decodeJsonObject
-import jp.juggler.util.decodeUTF8
-import jp.juggler.util.digestSHA256
-import jp.juggler.util.encodeBase64Url
-import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notEmpty
 import jp.juggler.util.withCaption
 import kotlinx.coroutines.Dispatchers
@@ -207,9 +206,7 @@ class PushRepo(
         val accounts = accountAccess.load()
 
         // map of acctHash to account
-        val acctHashMap = accounts.associateBy {
-            it.acct.encodeUTF8().digestSHA256().encodeBase64Url()
-        }
+        val acctHashMap = accounts.associateBy { it.acctHash }
         val acctHashList = acctHashMap.keys.toList()
         if (acctHashList.isEmpty()) {
             AdbLog.w("acctHashMap is empty. no need to update register endpoint")
@@ -352,74 +349,45 @@ class PushRepo(
     //////////////////////////////////////////////////////////////////////////////
     // メッセージの処理
 
+    /**
+     * FcmHandlerから呼ばれる。
+     */
     suspend fun handleFcmMessage(data: Map<String, String>) {
-        val pm = saveRawMessage(
-            acctHash = data["a"]?.decodeBase128()?.decompressBrotli()?.encodeBase64Url()
-                ?: error("missing a"),
-            headerJson = data["h"]?.decodeBase128()?.decompressBrotli()?.decodeUTF8()
-                ?.decodeJsonObject()
-                ?: error("missing h"),
-            body = data["b"]?.decodeBase128()?.decompressBrotli()
-                ?: error("missing b"),
-            cameFrom = CAME_FROM_FCM
-        )
-        decodeMessageContent(pm)
-        // 解読できた(例外が出なかった)なら通知を再度出す
-        context.showSnsNotification(pm)
+        data["d"]?.decodeBase128()?.let { bytes ->
+            saveRawMessage(bytes)
+        }
     }
 
     /**
      * UpMessageReceiverから呼ばれる。
-     * とりあえず受信データをDBに保存する。
      */
-    suspend fun saveUpMessage(message: ByteArray): PushMessage {
-        var pos = 0
-        fun readUInt32(): Int {
-            if (pos + 4 > message.size) error("unexpected end.")
-            val b0 = message[pos].toInt().and(255)
-            val b1 = message[pos + 1].toInt().and(255).shl(8)
-            val b2 = message[pos + 2].toInt().and(255).shl(16)
-            val b3 = message[pos + 3].toInt().and(255).shl(24)
-            pos += 4
-            return b0.or(b1).or(b2).or(b3)
-        }
-
-        fun readSubBytes(): ByteArray {
-            val size = readUInt32()
-            if (pos + size > message.size) error("unexpected end.")
-            val subBytes = ByteArray(size)
-            System.arraycopy(
-                message, pos,
-                subBytes, 0,
-                size
-            )
-            pos += size
-            return subBytes
-        }
-
-        // 順に読む
-        val acctHash = readSubBytes()
-        val headerJson = readSubBytes()
-        val body = readSubBytes()
-
-        return saveRawMessage(
-            acctHash = acctHash.decodeUTF8(),
-            headerJson = headerJson.decodeUTF8().decodeJsonObject(),
-            body = body,
-            cameFrom = CAME_FROM_UNIFIED_PUSH
-        )
+    suspend fun saveUpMessage(message: ByteArray) {
+        saveRawMessage(message)
     }
 
     /**
-     * UpWorkerから呼ばれる。
-     * 保存データを解釈して通知を出す。
+     * 解読前のプッシュデータを保存する
+     *
+     * - 実際のアプリでは解読できたものだけを保存したいが、これは試験アプリなので…
      */
-    suspend fun handleUpMessage(messageId: Long) {
-        val pm = pushMessageAccess.find(messageId)
-            ?: error("missing pushMessage")
-        decodeMessageContent(pm)
-        // 解読できた(例外が出なかった)なら通知を再度出す
-        context.showSnsNotification(pm)
+    private suspend fun saveRawMessage(bytes: ByteArray) {
+        // アカウントハッシュの確認だけやる
+        val map = bytes.decodeBinPackMap() ?: error("binPack decode failed.")
+        val acctHash = map.string("a") ?: error("missing a.")
+        val a = accountAccess.findAcctHash(acctHash)
+            ?: error("missing account for acctHash $acctHash")
+
+        val pm = PushMessage(
+            loginAcct = a.acct,
+            rawBody = bytes,
+        )
+        pushMessageAccess.save(pm)
+
+        // 後の処理はワーカーでやる
+        workDataOf(
+            PushWorker.KEY_ACTION to PushWorker.ACTION_MESSAGE,
+            PushWorker.KEY_MESSAGE_ID to pm.messageDbId,
+        ).launchUpWorker(context)
     }
 
     /**
@@ -428,35 +396,49 @@ class PushRepo(
      * - 実際のアプリでは解読できたものだけを保存したいが、これは試験アプリなので…
      */
     suspend fun reDecode(pm: PushMessage) {
-        decodeMessageContent(pm)
-        // 解読できた(例外が出なかった)なら通知を再度出す
-        context.showSnsNotification(pm)
+        withContext(AppDispatchers.IO) {
+            updateMessage(pm.messageDbId)
+        }
     }
 
     /**
-     * 解読前のプッシュデータを保存する
-     *
-     * - 実際のアプリでは解読できたものだけを保存したいが、これは試験アプリなので…
+     * UpWorkerから呼ばれる。
+     * 保存データを解釈して通知を出す。
      */
-    private suspend fun saveRawMessage(
-        acctHash: String,
-        headerJson: JsonObject,
-        body: ByteArray,
-        cameFrom: String,
-    ): PushMessage {
-        val a = accountAccess.load().find {
-            acctHash == it.acct.encodeUTF8().digestSHA256().encodeBase64Url()
-        } ?: error("missing account for acctHash $acctHash")
+    suspend fun updateMessage(messageId: Long) {
+        // DBからロード
+        val pm = pushMessageAccess.find(messageId)
+            ?: error("missing pushMessage")
+        var map = pm.rawBody?.decodeBinPackMap()
+            ?: error("binPack decode failed.")
 
-        headerJson[JSON_CAME_FROM] = cameFrom
+        // 該当アカウント
+        val acctHash = map.string("a") ?: error("missing a.")
+        val a = accountAccess.findAcctHash(acctHash)
+            ?: error("missing account for acctHash $acctHash")
 
-        val pm = PushMessage(
-            loginAcct = a.acct,
-            headerJson = headerJson,
-            rawBody = body,
-        )
+        // 解読がまだできていない
+        if (map["b"] == null) {
+            map.string("l")?.let{largeObjectId->
+                // ネットから読み直す
+                apiAppServer.getLargeObject(largeObjectId)
+                    ?.let {
+                        map = it.decodeBinPack() as? BinPackMap
+                            ?: error("binPack decode failed.")
+                        pm.rawBody = it
+                        pushMessageAccess.save(pm)
+                    }
+            }
+        }
+
+        decodeMessageContent(pm, map)
+
+        // messageJsonを解釈して通知に出す内容を決める
+        pushBase(a).formatPushMessage(a, pm)
         pushMessageAccess.save(pm)
-        return pm
+
+        // 解読できた(例外が出なかった)なら通知を再度出す
+        context.showSnsNotification(pm)
     }
 
     /**
@@ -464,14 +446,25 @@ class PushRepo(
      *
      * - 実際のアプリでは解読できたものだけを保存したいが、これは試験アプリなので…
      */
-    private suspend fun decodeMessageContent(pm: PushMessage) {
+    private suspend fun decodeMessageContent(
+        pm: PushMessage,
+        map: BinPackMap,
+    ) {
         val a = accountAccess.find(pm.loginAcct)
             ?: error("missing login account ${pm.loginAcct}")
 
-        val body = pm.rawBody
-            ?: error("missing raw data.")
+        val encryptedBody = map.bytes("b") ?: error("missing encryptedBody")
+        val headers = map.map("h") ?: error("missing headers")
 
-        val headerJson = pm.headerJson
+        pm.headerJson = buildJsonObject {
+            headers.entries.forEach { e ->
+                put(e.key.toString(), e.value.toString())
+            }
+        }
+
+        // ヘッダを探すときは小文字化
+        fun header(name: String): String? = headers.string(name.lowercase())
+
         // AdbLog.i("headerJson.keys=${headerJson.keys.joinToString(",")}")
         //        headerJson={
         //            "Digest":"SHA-256=nnn",
@@ -482,8 +475,8 @@ class PushRepo(
         //        }
 
         try {
-            if (headerJson.string("Content-Encoding")?.trim() == "aes128gcm") {
-                Aes128GcmDecoder(body.byteRangeReader(), provider).run {
+            if (header("Content-Encoding")?.trim() == "aes128gcm") {
+                Aes128GcmDecoder(encryptedBody.byteRangeReader(), provider).run {
                     deriveKeyWebPush(
                         // receiver private key in X509 format
                         receiverPrivateBytes = a.pushKeyPrivate ?: error("missing pushKeyPrivate"),
@@ -496,7 +489,7 @@ class PushRepo(
                 }
             } else {
                 // Crypt-Key から dh と p256ecdsa を見る
-                val cryptKeys = headerJson.string("Crypto-Key")
+                val cryptKeys = header("Crypto-Key")
                     ?.parseSemicolon() ?: error("missing Crypto-Key")
 
                 AesGcmDecoder(
@@ -505,13 +498,13 @@ class PushRepo(
                     senderPublicBytes = cryptKeys["dh"]?.decodeBase64()
                         ?: a.pushServerKey ?: error("missing pushServerKey"),
                     authSecret = a.pushAuthSecret ?: error("missing pushAuthSecret"),
-                    saltBytes = headerJson.string("Encryption")?.parseSemicolon()
+                    saltBytes = header("Encryption")?.parseSemicolon()
                         ?.get("salt")?.decodeBase64()
                         ?: error("missing Encryption.salt"),
                     provider = provider
                 ).run {
                     deriveKey()
-                    decode(body.toByteRange())
+                    decode(encryptedBody.toByteRange())
                 }
             }
         } catch (ex: Throwable) {
@@ -520,10 +513,8 @@ class PushRepo(
             null
         }?.decodeUTF8()?.decodeJsonObject()?.let {
             pm.messageJson = it
-            pushBase(a).formatPushMessage(a, pm)
             pushMessageAccess.save(pm)
         }
-
     }
 
     /**

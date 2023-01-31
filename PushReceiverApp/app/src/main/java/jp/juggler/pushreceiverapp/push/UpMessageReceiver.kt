@@ -6,7 +6,6 @@ import jp.juggler.pushreceiverapp.notification.showAlertNotification
 import jp.juggler.pushreceiverapp.notification.showError
 import jp.juggler.pushreceiverapp.push.PushWorker.Companion.launchUpWorker
 import jp.juggler.util.AdbLog
-import jp.juggler.util.Base128.decompressBrotli
 import jp.juggler.util.checkAppForeground
 import kotlinx.coroutines.runBlocking
 import org.unifiedpush.android.connector.MessagingReceiver
@@ -63,13 +62,7 @@ class UpMessageReceiver : MessagingReceiver() {
         checkAppForeground("UpMessageReceiver.onMessage")
         runBlocking {
             try {
-                // DBへの保存を急いで行う
-                val pm = context.pushRepo.saveUpMessage(message.decompressBrotli())
-                // 後の処理はワーカーでやる
-                workDataOf(
-                    PushWorker.KEY_ACTION to PushWorker.ACTION_UP_MESSAGE,
-                    PushWorker.KEY_MESSAGE_ID to pm.messageDbId,
-                ).launchUpWorker(context)
+                context.pushRepo.saveUpMessage(message)
             } catch (ex: Throwable) {
                 context.showError(ex, "onMessage failed.")
             }

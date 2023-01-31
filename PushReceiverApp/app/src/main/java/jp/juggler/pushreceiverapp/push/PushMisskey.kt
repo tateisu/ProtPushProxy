@@ -10,9 +10,7 @@ import jp.juggler.pushreceiverapp.push.crypt.defaultSecurityProvider
 import jp.juggler.pushreceiverapp.push.crypt.encodeP256Dh
 import jp.juggler.pushreceiverapp.push.crypt.generateKeyPair
 import jp.juggler.util.decodeBase64
-import jp.juggler.util.digestSHA256
 import jp.juggler.util.encodeBase64Url
-import jp.juggler.util.encodeUTF8
 import jp.juggler.util.notBlank
 import jp.juggler.util.notEmpty
 import java.security.Provider
@@ -22,7 +20,7 @@ import java.security.interfaces.ECPublicKey
 class PushMisskey(
     private val api: ApiMisskey,
     private val provider: Provider = defaultSecurityProvider,
-    private val prefDevice: PrefDevice,
+    override val prefDevice: PrefDevice,
     private val accountAccess: SavedAccount.Access,
 ) : PushBase() {
     companion object {
@@ -34,11 +32,7 @@ class PushMisskey(
         a: SavedAccount,
         willRemoveSubscription: Boolean,
     ) {
-        val deviceHash =
-            "${prefDevice.installIdv2},${a.acct}".encodeUTF8().digestSHA256().encodeBase64Url()
-        val newUrl = a.appServerHash?.notEmpty()?.let {
-            "${appServerUrlPrefix}/a_${it}/dh_${deviceHash}"
-        }
+        val newUrl = snsCallbackUrl(a)
 
         val lastEndpointUrl = a.tokenJson.string(JSON_LAST_ENDPOINT_URL) ?: newUrl
         var hasEmptySubscription = false
@@ -169,7 +163,7 @@ class PushMisskey(
             "notification" -> {
                 val notificationType = body?.string("type")
 
-                pm.messageShort =arrayOf<String?>(
+                pm.messageShort = arrayOf<String?>(
                     user?.string("username"),
                     notificationType,
                 ).mapNotNull { it.notBlank() }.joinToString(", ")

@@ -40,9 +40,15 @@
             </intent-filter>
         </activity>
 
-        <activity android:name="jp.juggler.pushreceiverapp.ActAlert" />
-        <activity android:name="jp.juggler.pushreceiverapp.ActMessage" />
-        <activity android:name="jp.juggler.pushreceiverapp.ActAccountList" />
+        <activity
+            android:name="jp.juggler.pushreceiverapp.ActAlert"
+            android:label="@string/alert" />
+        <activity
+            android:name="jp.juggler.pushreceiverapp.ActMessage"
+            android:label="@string/push_message" />
+        <activity
+            android:name="jp.juggler.pushreceiverapp.ActAccountList"
+            android:label="@string/account_list" />
 
         <receiver
             android:name="jp.juggler.pushreceiverapp.notification.NotificationDeleteReceiver"
